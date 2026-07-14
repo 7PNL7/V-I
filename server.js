@@ -623,10 +623,10 @@ app.post('/api/schedule/split-suggestion', async (req, res) => {
       ? Math.round((new Date(delivery + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000)
       : 999;
     
-    const ratePerDay = 500;
-    const totalDaysNeeded = Math.ceil(totalQty / ratePerDay);
-
     const lines = await ProductionLine.findAll();
+    const avgRate = Math.round(lines.reduce((s, l) => s + (l.daily_capacity || 500), 0) / lines.length) || 500;
+    const totalDaysNeeded = Math.ceil(totalQty / avgRate);
+
     const allSchedules = await Schedule.findAll({ order: [['position', 'ASC']] });
 
     let currentSchedule = null;
@@ -645,6 +645,7 @@ app.post('/api/schedule/split-suggestion', async (req, res) => {
     }
 
     const lineCapacity = lines.map(line => {
+      const cap = line.daily_capacity || 500;
       const lineSchedules = allSchedules.filter(s => s.ma_pipe === line.ma_pipe);
       let availableFrom = today;
       
@@ -661,7 +662,7 @@ app.post('/api/schedule/split-suggestion', async (req, res) => {
         ? Math.round((new Date(delivery + 'T00:00:00') - new Date(availableFrom + 'T00:00:00')) / 86400000)
         : 999;
       
-      const maxCanProduce = Math.max(0, daysAvail * ratePerDay);
+      const maxCanProduce = Math.max(0, daysAvail * cap);
       
       return {
         ma_pipe: line.ma_pipe,
@@ -669,7 +670,8 @@ app.post('/api/schedule/split-suggestion', async (req, res) => {
         available_from: availableFrom,
         days_available: daysAvail,
         max_produce_by_deadline: maxCanProduce,
-        queue_length: lineSchedules.length
+        queue_length: lineSchedules.length,
+        daily_capacity: cap
       };
     });
 
@@ -684,7 +686,7 @@ app.post('/api/schedule/split-suggestion', async (req, res) => {
       splitSuggestions = lineCapacity.filter(l => l.days_available > 0).map(l => {
         const ratio = totalDays > 0 ? Math.max(0, l.days_available) / totalDays : 0;
         const allocated = Math.round(totalQty * ratio);
-        const prodDays = Math.ceil(allocated / ratePerDay);
+        const prodDays = Math.ceil(allocated / (l.daily_capacity || 500));
         const endDt = new Date(l.available_from + 'T00:00:00');
         endDt.setDate(endDt.getDate() + prodDays - 1);
         
@@ -708,7 +710,7 @@ app.post('/api/schedule/split-suggestion', async (req, res) => {
         .map(l => {
           const allocate = Math.min(remainingQty, l.max_produce_by_deadline);
           remainingQty -= allocate;
-          const prodDays = Math.ceil(allocate / ratePerDay);
+          const prodDays = Math.ceil(allocate / (l.daily_capacity || 500));
           const endDt = new Date(l.available_from + 'T00:00:00');
           endDt.setDate(endDt.getDate() + prodDays - 1);
           
@@ -774,7 +776,8 @@ app.post('/api/schedule/split-assign', async (req, res) => {
       const line = await ProductionLine.findOne({ where: { ma_pipe } });
       if (!line) continue;
 
-      const prodDays = Math.ceil(quantity / 500) || 1;
+      const cap = line.daily_capacity || 500;
+      const prodDays = Math.ceil(quantity / cap) || 1;
       let actualStart = start_date || toLocalDate(new Date());
 
       const lineSchedules = await Schedule.findAll({ 
@@ -828,7 +831,7 @@ app.post('/api/schedule/split-assign', async (req, res) => {
 app.post('/api/schedule/move', async (req, res) => {
   try {
     const { ma_dh, ma_pipe, start_date } = req.body;
-    const { Order, Schedule } = require('./models');
+    const { Order, Schedule, ProductionLine } = require('./models');
 
     const toLocalDate = (date) => {
       if (!date) return null;
@@ -845,7 +848,10 @@ app.post('/api/schedule/move', async (req, res) => {
       return res.status(404).json({ msg: 'Không tìm thấy đơn hoặc lịch trình' });
     }
 
-    const prodDays = Math.ceil(order.so_luong / 500) || 1;
+    // Get target line's daily capacity
+    const targetLine = await ProductionLine.findOne({ where: { ma_pipe } });
+    const moveCap = targetLine?.daily_capacity || 500;
+    const prodDays = Math.ceil(order.so_luong / moveCap) || 1;
     const actualStart = start_date || schedule.start_date;
     const endDt = new Date(actualStart + 'T00:00:00');
     endDt.setDate(endDt.getDate() + prodDays - 1);

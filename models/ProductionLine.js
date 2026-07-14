@@ -47,6 +47,11 @@ const ProductionLine = sequelize.define('pipeline', {
   estimatedEndTime: {
     type: DataTypes.DATE,
     comment: 'Thời gian kết thúc dự kiến'
+  },
+  daily_capacity: {
+    type: DataTypes.INTEGER,
+    defaultValue: 500,
+    comment: 'Số sản phẩm sản xuất tối đa mỗi ngày'
   }
 });
 
