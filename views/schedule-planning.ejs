@@ -18,7 +18,7 @@
     .page-header { margin-bottom:20px; }
     .page-header h1 { font-size:24px; font-weight:700; color:#1F3864; }
     .page-header p { font-size:14px; color:#666; margin-top:4px; }
-    .stats-row { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:20px; }
+    .stats-row { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:20px; }
     @media(max-width:900px){.stats-row{grid-template-columns:repeat(2,1fr);}}
     .stat-card { background:#fff; border-radius:10px; padding:16px 18px; box-shadow:0 2px 8px rgba(0,0,0,0.05); border-left:4px solid #2E75B6; }
     .stat-card .num { font-size:24px; font-weight:800; color:#1F3864; }
@@ -52,7 +52,10 @@
     .gantt-job { position:absolute; top:6px; height:44px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:600; color:#fff; cursor:pointer; transition:all .2s; z-index:5; overflow:hidden; padding:0 4px; min-width:4px; box-shadow:0 1px 4px rgba(0,0,0,0.15); }
     .gantt-job:hover { transform:scaleY(1.05); box-shadow:0 3px 10px rgba(0,0,0,0.25); z-index:20; }
     .gantt-job.running { background:linear-gradient(135deg,#90EE90,#28a745); border:1px solid #28a745; }
-    .gantt-job.pending { background:linear-gradient(135deg,#fce38a,#f39c12); border:1px solid #f39c12; color:#333; }
+    .gantt-job.queued { background:linear-gradient(135deg,#74b9ff,#0984e3); border:1px solid #0984e3; }
+    .gantt-job.overdue { background:linear-gradient(135deg,#ff7675,#d63031); border:1px solid #d63031; animation:pulseOverdue 1.5s infinite; }
+    .gantt-job.completed { background:linear-gradient(135deg,#b2bec3,#636e72); border:1px solid #636e72; }
+    @keyframes pulseOverdue { 0%,100%{opacity:1} 50%{opacity:0.85} }
     .gantt-job.free-slot { background:rgba(46,117,182,0.08); border:2px dashed rgba(46,117,182,0.3); color:#2E75B6; cursor:pointer; z-index:3; box-shadow:none; }
     .gantt-job.free-slot:hover { background:rgba(46,117,182,0.2); border-color:#2E75B6; box-shadow:0 0 0 3px rgba(46,117,182,0.1); }
     .gantt-job .label { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -127,6 +130,7 @@
     <div class="stat-card" style="border-left-color:#28a745;"><div class="num" id="statRunning">—</div><div class="lbl">▶️ Đang hoạt động</div></div>
     <div class="stat-card" style="border-left-color:#ffc107;"><div class="num" id="statPending">—</div><div class="lbl">⏳ Đơn chờ xử lý</div></div>
     <div class="stat-card" style="border-left-color:#6f42c1;"><div class="num" id="statUtil">—%</div><div class="lbl">📊 Tỉ lệ sử dụng</div></div>
+    <div class="stat-card" style="border-left-color:#dc3545; display:none;" id="overdueStat"><div class="num" id="statOverdue">0</div><div class="lbl">🔴 Đơn trễ hạn</div></div>
   </div>
 
   <div class="layout">
@@ -192,7 +196,7 @@
           <p>2️⃣ Click vào ô <strong>trống (+)</strong> trên timeline để chọn ngày</p>
           <p>3️⃣ Nhấn <strong>"Gán đơn"</strong> để xác nhận</p>
           <hr style="margin:10px 0;border:none;border-top:1px solid #e8edf5;">
-          <p>🟢 Xanh = đang SX<br>🟡 Vàng = chờ SX<br>🔵 Dash (+) = sẵn sàng gán</p>
+            <p>🟢 Xanh = đang SX<br>🔵 Xanh dương = chờ SX<br>🔴 Đỏ = trễ hạn<br>⚪ Xám = hoàn thành</p>
         </div>
       </div>
     </div>
@@ -297,11 +301,15 @@
   function updateStats() {
     const pending = allOrders.filter(o => o.status === 'pending' || o.status === 'approved').length;
     const running = allLines.filter(l => l.status === 'RUNNING').length;
-    const active = allLines.filter(l => l.ma_dh_dang_lam).length;
+    const scheduled = ganttData?.stats?.total_scheduled || 0;
     document.getElementById('statLines').textContent = allLines.length;
     document.getElementById('statRunning').textContent = running;
     document.getElementById('statPending').textContent = pending;
-    document.getElementById('statUtil').textContent = allLines.length ? Math.round(active / allLines.length * 100) : 0;
+    document.getElementById('statUtil').textContent = allLines.length ? Math.round(scheduled / Math.max(allLines.length * 3, 1) * 100) : 0;
+    if (ganttData?.stats?.overdue > 0) {
+      document.getElementById('overdueStat').style.display = 'block';
+      document.getElementById('statOverdue').textContent = ganttData.stats.overdue;
+    }
   }
 
   function renderOrders() {
@@ -324,9 +332,34 @@
     document.querySelectorAll('.order-item')[idx]?.classList.add('selected');
     pendingAssign = null;
     document.getElementById('assignBar').classList.remove('visible');
-    // Re-render Gantt with free slots
-    if (ganttData) renderGantt();
+    // Show slot suggestions
+    showSlotSuggestions();
     showToast(`📌 Đã chọn: ${selectedOrder.ma_dh}`, 'success');
+  }
+
+  async function showSlotSuggestions() {
+    if (!selectedOrder) return;
+    try {
+      const res = await fetch('/api/schedule/suggest-slot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ma_dh: selectedOrder.ma_dh,
+          so_luong: selectedOrder.so_luong,
+          ngay_giao: selectedOrder.ngay_giao
+        })
+      });
+      const suggestions = await res.json();
+      if (!suggestions || suggestions.length === 0) return;
+      let msg = `💡 Đề xuất cho ${selectedOrder.ma_dh}:<br>`;
+      suggestions.slice(0, 3).forEach(s => {
+        const icon = s.is_overdue ? '🔴' : '🟢';
+        const overtime = s.is_overdue ? ' (trễ hạn!)' : '';
+        msg += `${icon} ${s.ten_pipe}: BĐ ${s.slot_start} → KT ${s.slot_end} (${s.production_days} ngày, ${s.queue_length} đơn chờ)${overtime}<br>`;
+      });
+      if (ganttData) renderGantt();
+      showToast(msg, 'success');
+    } catch(e) { console.error('Suggest error:', e); }
   }
 
   function renderGantt() {
@@ -378,10 +411,18 @@
               else break;
             }
             const jobWidth = Math.max(span * 38 - 4, 10);
-            const jobClass = job.status === 'RUNNING' ? 'running' : 'pending';
+            
+            // Map job status to CSS class
+            let jobClass = 'queued';
+            if (job.status === 'RUNNING' || job.status === 'running') jobClass = 'running';
+            else if (job.status === 'OVERDUE' || job.status === 'overdue') jobClass = 'overdue';
+            else if (job.status === 'COMPLETED' || job.status === 'completed') jobClass = 'completed';
+            
+            const tooltip = `${job.ma_dh} - ${job.product||''} - ${job.customer||''}${job.is_overdue ? ' ⚠️ TRỄ HẠN!' : ''}`;
+            
             cellsHtml += `<div class="col ${isWeekend?'weekend':''} ${isToday?'today':''}" style="position:relative;">
-              <div class="gantt-job ${jobClass}" style="left:2px;width:${jobWidth}px;" title="${job.ma_dh} - ${job.product||''} - ${job.customer||''}" onclick="event.stopPropagation();showJobInfo('${job.ma_dh}')">
-                <span class="label">${job.ma_dh}</span>
+              <div class="gantt-job ${jobClass}" style="left:2px;width:${jobWidth}px;" title="${tooltip}" onclick="event.stopPropagation();showJobInfo('${job.ma_dh}')">
+                <span class="label">${job.ma_dh}${job.is_overdue ? ' ⛔' : ''}</span>
               </div>
             </div>`;
           }

@@ -303,17 +303,26 @@ app.get('/api/schedule/gantt', async (req, res) => {
   }
 });
 
-// Get Gantt chart data for ALL production lines
+// Get Gantt chart data for ALL production lines (multi-order support)
 app.get('/api/schedule/gantt-all', async (req, res) => {
   try {
-    const { ProductionLine, Order, Product } = require('./models');
+    const { ProductionLine, Order, Product, Schedule } = require('./models');
     const lines = await ProductionLine.findAll();
     const allOrders = await Order.findAll({ include: Product });
+    const allSchedules = await Schedule.findAll({ order: [['ma_pipe', 'ASC'], ['position', 'ASC']] });
     
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Parse date range from query params, default to 30 days from today
+    // Helper: Convert JS Date to local date string YYYY-MM-DD
+    const toLocalDate = (date) => {
+      if (!date) return null;
+      const d = new Date(date);
+      return d.getFullYear() + '-' + 
+        String(d.getMonth() + 1).padStart(2, '0') + '-' + 
+        String(d.getDate()).padStart(2, '0');
+    };
+
     let startDate, endDate;
     if (req.query.start_date && req.query.end_date) {
       startDate = new Date(req.query.start_date + 'T00:00:00');
@@ -324,42 +333,60 @@ app.get('/api/schedule/gantt-all', async (req, res) => {
       endDate.setDate(endDate.getDate() + 30);
     }
 
-    // Generate timeline
     const dates = [];
     const current = new Date(startDate);
     while (current <= endDate && dates.length < 90) {
-      dates.push(current.toISOString().split('T')[0]);
+      dates.push(toLocalDate(current));
       current.setDate(current.getDate() + 1);
     }
 
-    // Build line data with jobs
+    // Build line data with ALL scheduled orders
     const lineData = lines.map(line => {
       const jobs = [];
+      const lineSchedules = allSchedules.filter(s => s.ma_pipe === line.ma_pipe);
 
-      // If line has an active order, show it
-      if (line.ma_dh_dang_lam) {
-        const activeOrder = allOrders.find(o => o.ma_dh === line.ma_dh_dang_lam);
-        if (activeOrder) {
-          const prodDays = Math.ceil(activeOrder.so_luong / 500) || 1;
-          const startDate = line.startTime 
-            ? new Date(line.startTime) 
-            : new Date(today);
-          
-          for (let d = 0; d < prodDays; d++) {
-            const dateStr = new Date(startDate.getTime() + d * 86400000).toISOString().split('T')[0];
-            if (dates.includes(dateStr)) {
-              jobs.push({
-                date: dateStr,
-                ma_dh: activeOrder.ma_dh,
-                label: `${activeOrder.ma_dh} (${activeOrder.so_luong} cái)`,
-                status: line.status === 'RUNNING' ? 'RUNNING' : 'PENDING',
-                product: activeOrder.product?.ten_sp || activeOrder.ma_sp,
-                customer: activeOrder.ten_kh
-              });
-            }
+      lineSchedules.forEach(sch => {
+        const order = allOrders.find(o => o.ma_dh === sch.ma_dh);
+        if (!order) return;
+
+        const startLocal = toLocalDate(sch.start_date);
+        const endLocal = toLocalDate(sch.end_date);
+
+        const prodDays = endLocal && startLocal
+          ? Math.round((new Date(endLocal + 'T00:00:00') - new Date(startLocal + 'T00:00:00')) / 86400000) + 1
+          : Math.ceil(order.so_luong / 500) || 1;
+
+        const actualStart = startLocal || toLocalDate(today);
+        const startDt = new Date(actualStart + 'T00:00:00');
+        const deliveryDate = order.ngay_giao 
+          ? toLocalDate(order.ngay_giao)
+          : (sch.delivery_date ? toLocalDate(sch.delivery_date) : null);
+
+        for (let d = 0; d < prodDays; d++) {
+          const dateStr = toLocalDate(new Date(startDt.getTime() + d * 86400000));
+          if (dates.includes(dateStr)) {
+            const isOverdue = deliveryDate && dateStr > deliveryDate;
+            
+            let jobStatus = sch.status;
+            if (isOverdue) jobStatus = 'OVERDUE';
+            else if (sch.status === 'running') jobStatus = 'RUNNING';
+            else if (sch.status === 'completed') jobStatus = 'COMPLETED';
+            else jobStatus = 'QUEUED';
+
+            jobs.push({
+              date: dateStr,
+              ma_dh: order.ma_dh,
+              label: `${order.ma_dh} (${order.so_luong} cái)`,
+              status: jobStatus,
+              product: order.product?.ten_sp || order.ma_sp,
+              customer: order.ten_kh,
+              delivery_date: deliveryDate,
+              is_overdue: isOverdue,
+              position: sch.position
+            });
           }
         }
-      }
+      });
 
       return {
         ten_pipe: line.ten_pipe,
@@ -369,18 +396,110 @@ app.get('/api/schedule/gantt-all', async (req, res) => {
       };
     });
 
-    res.json({ dates, lines: lineData });
+    // Count overdue orders
+    const overdueCount = allSchedules.filter(s => {
+      const o = allOrders.find(ord => ord.ma_dh === s.ma_dh);
+      if (!o) return false;
+      const delivery = o.ngay_giao ? toLocalDate(o.ngay_giao) : null;
+      const endLocal = toLocalDate(s.end_date);
+      return delivery && endLocal && endLocal > delivery;
+    }).length;
+
+    res.json({ dates, lines: lineData, stats: { total_scheduled: allSchedules.length, overdue: overdueCount } });
   } catch (e) {
     console.error('Error in gantt-all:', e);
     res.status(500).json({ msg: 'Lỗi server' });
   }
 });
 
-// Save schedule assignment
+// Suggest optimal slot for an order on all lines
+app.post('/api/schedule/suggest-slot', async (req, res) => {
+  try {
+    const { ma_dh, so_luong, ngay_giao } = req.body;
+    const { ProductionLine, Schedule, Order } = require('./models');
+
+    const toLocalDate = (date) => {
+      if (!date) return null;
+      const d = new Date(date);
+      return d.getFullYear() + '-' + 
+        String(d.getMonth() + 1).padStart(2, '0') + '-' + 
+        String(d.getDate()).padStart(2, '0');
+    };
+
+    const order = ma_dh ? await Order.findOne({ where: { ma_dh } }) : null;
+    const prodDays = Math.ceil((so_luong || order?.so_luong || 1000) / 500) || 1;
+    const delivery = ngay_giao || (order?.ngay_giao ? toLocalDate(order.ngay_giao) : null);
+    const today = toLocalDate(new Date());
+
+    const lines = await ProductionLine.findAll();
+    const allSchedules = await Schedule.findAll({ order: [['position', 'ASC']] });
+
+    const suggestions = lines.map(line => {
+      const lineSchedules = allSchedules.filter(s => s.ma_pipe === line.ma_pipe);
+      
+      let slotStart = today;
+      if (lineSchedules.length > 0) {
+        const lastSch = lineSchedules[lineSchedules.length - 1];
+        const lastEnd = toLocalDate(lastSch.end_date);
+        if (lastEnd) {
+          const dt = new Date(lastEnd + 'T00:00:00');
+          dt.setDate(dt.getDate() + 1);
+          slotStart = toLocalDate(dt);
+        }
+      }
+
+      const endDt = new Date(slotStart + 'T00:00:00');
+      endDt.setDate(endDt.getDate() + prodDays - 1);
+      const slotEnd = toLocalDate(endDt);
+
+      const isOverdue = delivery && slotEnd > delivery;
+      
+      let score = 100;
+      let statusText = 'Khả dụng';
+      
+      if (line.status !== 'IDLE') score -= 20;
+      if (lineSchedules.length > 2) score -= 15;
+      if (isOverdue) {
+        score -= 40;
+        statusText = `Có thể trễ hạn (kết thúc: ${slotEnd}, giao: ${delivery})`;
+      }
+      if (lineSchedules.length === 0) score += 10;
+
+      return {
+        ma_pipe: line.ma_pipe,
+        ten_pipe: line.ten_pipe,
+        status: line.status,
+        queue_length: lineSchedules.length,
+        slot_start: slotStart,
+        slot_end: slotEnd,
+        production_days: prodDays,
+        is_overdue: !!isOverdue,
+        score: Math.max(10, Math.round(score)),
+        status_text: statusText
+      };
+    });
+
+    suggestions.sort((a, b) => b.score - a.score);
+    res.json(suggestions);
+  } catch (e) {
+    console.error('Error in suggest-slot:', e);
+    res.status(500).json({ msg: 'Lỗi server' });
+  }
+});
+
+// Save schedule assignment (multi-order queue)
 app.post('/api/schedule/assign', async (req, res) => {
   try {
-    const { ma_dh, ma_pipe, start_date, end_date } = req.body;
-    const { Order, ProductionLine } = require('./models');
+    const { ma_dh, ma_pipe, start_date } = req.body;
+    const { Order, ProductionLine, Schedule } = require('./models');
+
+    const toLocalDate = (date) => {
+      if (!date) return null;
+      const d = new Date(date);
+      return d.getFullYear() + '-' + 
+        String(d.getMonth() + 1).padStart(2, '0') + '-' + 
+        String(d.getDate()).padStart(2, '0');
+    };
 
     const order = await Order.findOne({ where: { ma_dh } });
     const line = await ProductionLine.findOne({ where: { ma_pipe } });
@@ -389,22 +508,79 @@ app.post('/api/schedule/assign', async (req, res) => {
       return res.status(404).json({ msg: 'Không tìm thấy đơn hàng hoặc dây chuyền' });
     }
 
-    // Update pipeline with the assigned order
-    await line.update({
-      ma_sp_dang_lam: order.ma_sp,
-      ma_dh_dang_lam: order.ma_dh,
-      status: 'IDLE',
-      startTime: start_date ? new Date(start_date) : null,
-      estimatedEndTime: end_date ? new Date(end_date) : null
+    // Check if order already scheduled
+    const existing = await Schedule.findOne({ where: { ma_dh } });
+    if (existing) {
+      return res.status(400).json({ msg: 'Đơn hàng đã được xếp lịch trước đó' });
+    }
+
+    // Calculate production days
+    const prodDays = Math.ceil(order.so_luong / 500) || 1;
+
+    // Determine start date: if start_date provided, use it; else queue after last order
+    let actualStart = start_date;
+    if (!actualStart) {
+      const lineSchedules = await Schedule.findAll({ 
+        where: { ma_pipe }, 
+        order: [['position', 'DESC']],
+        limit: 1
+      });
+      if (lineSchedules.length > 0) {
+        const lastEnd = toLocalDate(lineSchedules[0].end_date);
+        const dt = new Date(lastEnd + 'T00:00:00');
+        dt.setDate(dt.getDate() + 1);
+        actualStart = toLocalDate(dt);
+      } else {
+        actualStart = toLocalDate(new Date());
+      }
+    }
+
+    // Calculate end date
+    const endDt = new Date(actualStart + 'T00:00:00');
+    endDt.setDate(endDt.getDate() + prodDays - 1);
+    const actualEnd = toLocalDate(endDt);
+
+    // Get next position
+    const maxPos = await Schedule.max('position', { where: { ma_pipe } });
+    const nextPos = (maxPos || 0) + 1;
+
+    // Check overdue
+    const deliveryDate = order.ngay_giao ? toLocalDate(order.ngay_giao) : null;
+    const isOverdue = deliveryDate && actualEnd > deliveryDate;
+    const schStatus = isOverdue ? 'overdue' : 'queued';
+
+    // Create schedule record
+    await Schedule.create({
+      ma_pipe,
+      ma_dh,
+      ma_sp: order.ma_sp,
+      so_luong: order.so_luong,
+      start_date: actualStart,
+      end_date: actualEnd,
+      delivery_date: deliveryDate,
+      status: schStatus,
+      position: nextPos
     });
+
+    // Update pipeline if this is the first scheduled order
+    if (nextPos === 1) {
+      await line.update({
+        ma_sp_dang_lam: order.ma_sp,
+        ma_dh_dang_lam: order.ma_dh,
+        status: 'IDLE',
+        startTime: new Date(actualStart),
+        estimatedEndTime: new Date(actualEnd)
+      });
+    }
 
     // Update order status
     await order.update({ status: 'in_production' });
 
-    res.json({ 
-      msg: '✅ Đã gán đơn hàng vào dây chuyền thành công!',
-      ma_dh, ma_pipe
-    });
+    const msg = isOverdue 
+      ? `✅ Đã xếp lịch! Lưu ý: đơn hàng có nguy cơ trễ hạn (giao: ${deliveryDate}, kết thúc: ${actualEnd})`
+      : `✅ Đã xếp lịch #${nextPos} vào ${line.ten_pipe}! Bắt đầu: ${actualStart}, kết thúc: ${actualEnd}`;
+
+    res.json({ msg, ma_dh, ma_pipe, position: nextPos, start_date: actualStart, end_date: actualEnd, is_overdue: isOverdue });
   } catch (e) {
     console.error('Error assigning:', e);
     res.status(500).json({ msg: 'Lỗi khi gán đơn hàng: ' + e.message });
