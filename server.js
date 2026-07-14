@@ -511,8 +511,7 @@ app.post('/api/schedule/assign', async (req, res) => {
     };
 
     const order = await Order.findOne({ where: { ma_dh } });
-    const [lineRows] = await sequelize.query('SELECT * FROM pipeline WHERE ma_pipe = ?', { replacements: [ma_pipe] });
-    const line = lineRows[0];
+    const line = await ProductionLine.findOne({ where: { ma_pipe } });
 
     if (!order || !line) {
       return res.status(404).json({ msg: 'Không tìm thấy đơn hàng hoặc dây chuyền' });
