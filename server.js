@@ -365,7 +365,7 @@ app.get('/api/schedule/gantt-all', async (req, res) => {
         for (let d = 0; d < prodDays; d++) {
           const dateStr = toLocalDate(new Date(startDt.getTime() + d * 86400000));
           if (dates.includes(dateStr)) {
-            const isOverdue = deliveryDate && dateStr > deliveryDate;
+            const isOverdue = deliveryDate && dateStr >= deliveryDate;
             
             let jobStatus = sch.status;
             if (isOverdue) jobStatus = 'OVERDUE';
@@ -584,6 +584,256 @@ app.post('/api/schedule/assign', async (req, res) => {
   } catch (e) {
     console.error('Error assigning:', e);
     res.status(500).json({ msg: 'Lỗi khi gán đơn hàng: ' + e.message });
+  }
+});
+
+// Suggest split order across multiple lines to meet deadline
+app.post('/api/schedule/split-suggestion', async (req, res) => {
+  try {
+    const { ma_dh } = req.body;
+    const { Order, Product, ProductionLine, Schedule } = require('./models');
+
+    const toLocalDate = (date) => {
+      if (!date) return null;
+      const d = new Date(date);
+      return d.getFullYear() + '-' + 
+        String(d.getMonth() + 1).padStart(2, '0') + '-' + 
+        String(d.getDate()).padStart(2, '0');
+    };
+
+    const order = await Order.findOne({ where: { ma_dh }, include: Product });
+    if (!order) return res.status(404).json({ msg: 'Không tìm thấy đơn hàng' });
+
+    const today = toLocalDate(new Date());
+    const delivery = order.ngay_giao ? toLocalDate(order.ngay_giao) : null;
+    const totalQty = order.so_luong;
+    
+    const daysToDelivery = delivery 
+      ? Math.round((new Date(delivery + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000)
+      : 999;
+    
+    const ratePerDay = 500;
+    const totalDaysNeeded = Math.ceil(totalQty / ratePerDay);
+
+    const lines = await ProductionLine.findAll();
+    const allSchedules = await Schedule.findAll({ order: [['position', 'ASC']] });
+
+    let currentSchedule = null;
+    let currentLine = null;
+    const scheduleEntry = await Schedule.findOne({ where: { ma_dh } });
+    if (scheduleEntry) {
+      currentLine = lines.find(l => l.ma_pipe === scheduleEntry.ma_pipe);
+      currentSchedule = {
+        ma_pipe: scheduleEntry.ma_pipe,
+        ten_pipe: currentLine?.ten_pipe || scheduleEntry.ma_pipe,
+        start_date: toLocalDate(scheduleEntry.start_date),
+        end_date: toLocalDate(scheduleEntry.end_date),
+        status: scheduleEntry.status,
+        position: scheduleEntry.position
+      };
+    }
+
+    const lineCapacity = lines.map(line => {
+      const lineSchedules = allSchedules.filter(s => s.ma_pipe === line.ma_pipe);
+      let availableFrom = today;
+      
+      if (lineSchedules.length > 0) {
+        const lastEnd = toLocalDate(lineSchedules[lineSchedules.length - 1].end_date);
+        if (lastEnd) {
+          const dt = new Date(lastEnd + 'T00:00:00');
+          dt.setDate(dt.getDate() + 1);
+          availableFrom = toLocalDate(dt);
+        }
+      }
+      
+      const daysAvail = delivery 
+        ? Math.round((new Date(delivery + 'T00:00:00') - new Date(availableFrom + 'T00:00:00')) / 86400000)
+        : 999;
+      
+      const maxCanProduce = Math.max(0, daysAvail * ratePerDay);
+      
+      return {
+        ma_pipe: line.ma_pipe,
+        ten_pipe: line.ten_pipe,
+        available_from: availableFrom,
+        days_available: daysAvail,
+        max_produce_by_deadline: maxCanProduce,
+        queue_length: lineSchedules.length
+      };
+    });
+
+    const totalCapacity = lineCapacity.reduce((sum, l) => sum + l.max_produce_by_deadline, 0);
+    const canMeetDeadline = totalCapacity >= totalQty;
+
+    let splitSuggestions = [];
+    
+    if (!canMeetDeadline) {
+      const totalDays = lineCapacity.reduce((sum, l) => sum + Math.max(0, l.days_available), 0);
+      
+      splitSuggestions = lineCapacity.filter(l => l.days_available > 0).map(l => {
+        const ratio = totalDays > 0 ? Math.max(0, l.days_available) / totalDays : 0;
+        const allocated = Math.round(totalQty * ratio);
+        const prodDays = Math.ceil(allocated / ratePerDay);
+        const endDt = new Date(l.available_from + 'T00:00:00');
+        endDt.setDate(endDt.getDate() + prodDays - 1);
+        
+        return {
+          ma_pipe: l.ma_pipe,
+          ten_pipe: l.ten_pipe,
+          quantity: allocated,
+          production_days: prodDays,
+          start_date: l.available_from,
+          end_date: toLocalDate(endDt),
+          can_finish_on_time: false,
+          note: '⚠️ Không đủ thời gian, cần thêm line'
+        };
+      });
+    } else {
+      let remainingQty = totalQty;
+      
+      splitSuggestions = lineCapacity
+        .filter(l => l.max_produce_by_deadline > 0)
+        .sort((a, b) => b.days_available - a.days_available)
+        .map(l => {
+          const allocate = Math.min(remainingQty, l.max_produce_by_deadline);
+          remainingQty -= allocate;
+          const prodDays = Math.ceil(allocate / ratePerDay);
+          const endDt = new Date(l.available_from + 'T00:00:00');
+          endDt.setDate(endDt.getDate() + prodDays - 1);
+          
+          return {
+            ma_pipe: l.ma_pipe,
+            ten_pipe: l.ten_pipe,
+            quantity: allocate,
+            production_days: prodDays,
+            start_date: l.available_from,
+            end_date: toLocalDate(endDt),
+            can_finish_on_time: true,
+            note: allocate > 0 ? '✅ Có thể hoàn thành đúng hạn' : 'Không cần phân bổ'
+          };
+        })
+        .filter(s => s.quantity > 0);
+    }
+
+    res.json({
+      order: {
+        ma_dh: order.ma_dh,
+        ten_kh: order.ten_kh,
+        product: order.product?.ten_sp || order.ma_sp,
+        so_luong: totalQty,
+        ngay_giao: delivery,
+        total_days_needed: totalDaysNeeded,
+        days_until_delivery: daysToDelivery
+      },
+      current_schedule: currentSchedule,
+      can_meet_deadline: canMeetDeadline,
+      total_capacity_by_deadline: totalCapacity,
+      split_suggestions: splitSuggestions,
+      line_capacity: lineCapacity
+    });
+  } catch (e) {
+    console.error('Error in split-suggestion:', e);
+    res.status(500).json({ msg: 'Lỗi server: ' + e.message });
+  }
+});
+
+// Execute split: assign portions of an order to multiple lines
+app.post('/api/schedule/split-assign', async (req, res) => {
+  try {
+    const { ma_dh, splits } = req.body;
+    // splits: [{ ma_pipe: 'DC-A', quantity: 30000, start_date: '2026-07-15' }, ...]
+    const { Order, ProductionLine, Schedule } = require('./models');
+
+    const toLocalDate = (date) => {
+      if (!date) return null;
+      const d = new Date(date);
+      return d.getFullYear() + '-' + 
+        String(d.getMonth() + 1).padStart(2, '0') + '-' + 
+        String(d.getDate()).padStart(2, '0');
+    };
+
+    const order = await Order.findOne({ where: { ma_dh } });
+    if (!order) return res.status(404).json({ msg: 'Không tìm thấy đơn hàng' });
+
+    // Remove existing schedule for this order
+    await Schedule.destroy({ where: { ma_dh } });
+
+    const results = [];
+    for (const split of splits) {
+      const { ma_pipe, quantity, start_date } = split;
+      const line = await ProductionLine.findOne({ where: { ma_pipe } });
+      if (!line) continue;
+
+      const prodDays = Math.ceil(quantity / 500) || 1;
+      let actualStart = start_date || toLocalDate(new Date());
+
+      // Check if we need to queue after existing orders
+      const lineSchedules = await Schedule.findAll({ 
+        where: { ma_pipe }, 
+        order: [['position', 'DESC']],
+        limit: 1
+      });
+      if (lineSchedules.length > 0) {
+        const lastEnd = toLocalDate(lineSchedules[0].end_date);
+        if (lastEnd) {
+          const dt = new Date(lastEnd + 'T00:00:00');
+          dt.setDate(dt.getDate() + 1);
+          const queuedStart = toLocalDate(dt);
+          // Use the later of the two dates
+          if (queuedStart > actualStart) actualStart = queuedStart;
+        }
+      }
+
+      const endDt = new Date(actualStart + 'T00:00:00');
+      endDt.setDate(endDt.getDate() + prodDays - 1);
+      const actualEnd = toLocalDate(endDt);
+
+      const maxPos = await Schedule.max('position', { where: { ma_pipe } });
+      const nextPos = (maxPos || 0) + 1;
+
+      const deliveryDate = order.ngay_giao ? toLocalDate(order.ngay_giao) : null;
+      const isOverdue = deliveryDate && actualEnd > deliveryDate;
+      const schStatus = isOverdue ? 'overdue' : 'queued';
+
+      await Schedule.create({
+        ma_pipe,
+        ma_dh,
+        ma_sp: order.ma_sp,
+        so_luong: quantity,
+        start_date: actualStart,
+        end_date: actualEnd,
+        delivery_date: deliveryDate,
+        status: schStatus,
+        position: nextPos
+      });
+
+      if (nextPos === 1) {
+        await line.update({
+          ma_sp_dang_lam: order.ma_sp,
+          ma_dh_dang_lam: ma_dh,
+          status: 'IDLE'
+        });
+      }
+
+      results.push({
+        ma_pipe: line.ten_pipe,
+        quantity,
+        start_date: actualStart,
+        end_date: actualEnd,
+        position: nextPos,
+        is_overdue: isOverdue
+      });
+    }
+
+    await order.update({ status: 'in_production' });
+
+    res.json({
+      msg: `✅ Đã phân chia ${ma_dh} thành ${results.length} phần trên các dây chuyền!`,
+      results
+    });
+  } catch (e) {
+    console.error('Error in split-assign:', e);
+    res.status(500).json({ msg: 'Lỗi khi phân chia: ' + e.message });
   }
 });
 

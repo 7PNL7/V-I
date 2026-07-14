@@ -59,6 +59,29 @@
     .gantt-job.free-slot { background:rgba(46,117,182,0.08); border:2px dashed rgba(46,117,182,0.3); color:#2E75B6; cursor:pointer; z-index:3; box-shadow:none; }
     .gantt-job.free-slot:hover { background:rgba(46,117,182,0.2); border-color:#2E75B6; box-shadow:0 0 0 3px rgba(46,117,182,0.1); }
     .gantt-job .label { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    /* Detail modal */
+    .detail-modal-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); display:none; align-items:center; justify-content:center; z-index:2000; }
+    .detail-modal-overlay.active { display:flex; }
+    .detail-modal { background:#fff; border-radius:12px; padding:28px 32px; max-width:720px; width:90%; max-height:85vh; overflow-y:auto; box-shadow:0 10px 40px rgba(0,0,0,0.2); }
+    .detail-modal h3 { font-size:18px; color:#1F3864; margin-bottom:16px; font-weight:700; }
+    .detail-modal .dm-close { float:right; background:none; border:none; font-size:22px; cursor:pointer; color:#999; padding:0 4px; }
+    .detail-modal .dm-close:hover { color:#333; }
+    .dm-section { border:1px solid #e8edf5; border-radius:8px; padding:14px; margin-bottom:12px; }
+    .dm-section h4 { font-size:14px; color:#1F3864; margin-bottom:8px; }
+    .dm-row { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #f0f2f5; font-size:13px; }
+    .dm-row:last-child { border-bottom:none; }
+    .dm-row .dm-label { color:#666; }
+    .dm-row .dm-value { font-weight:600; color:#333; }
+    .dm-row .overdue-text { color:#d63031; font-weight:700; }
+    .split-item { padding:10px 12px; border:2px solid #e8edf5; border-radius:8px; margin-bottom:8px; }
+    .split-item:hover { border-color:#2E75B6; }
+    .split-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
+    .split-line { font-weight:600; font-size:13px; color:#1F3864; }
+    .split-qty { font-size:13px; color:#333; }
+    .split-dates { font-size:12px; color:#666; }
+    .split-ok { color:#28a745; font-weight:600; }
+    .split-warn { color:#d63031; font-weight:600; }
+    .dm-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:16px; }
     .sidebar-card { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.06); margin-bottom:16px; }
     .sidebar-card h3 { font-size:14px; font-weight:600; color:#1F3864; padding:14px 16px; border-bottom:2px solid #e8edf5; }
     .sidebar-body { padding:12px 16px; max-height:400px; overflow-y:auto; }
@@ -205,6 +228,17 @@
 
 <div class="footer">© 2026 Fabric Production Management System</div>
 <div id="toast" class="toast"></div>
+
+<!-- Order Detail Modal -->
+<div class="detail-modal-overlay" id="orderDetailModal">
+  <div class="detail-modal">
+    <button class="dm-close" onclick="closeDetailModal()">&times;</button>
+    <h3>📋 Chi tiết đơn hàng</h3>
+    <div id="detailContent">
+      <div style="text-align:center;padding:20px;color:#999;">Đang tải...</div>
+    </div>
+  </div>
+</div>
 
 <script>
   let allOrders = [];
@@ -399,15 +433,16 @@
         const job = jobMap[d];
 
         if (job) {
-          // Check if this is the start of a contiguous job block
+          // Check if this is the start of a contiguous job block (same order AND same status)
           const prevJob = jobMap[dates[idx-1]];
-          if (prevJob?.ma_dh === job.ma_dh) {
+          if (prevJob?.ma_dh === job.ma_dh && prevJob?.status === job.status) {
             cellsHtml += `<div class="col ${isWeekend?'weekend':''} ${isToday?'today':''}"></div>`;
           } else {
-            // Calculate span of this job
+            // Calculate span of this job block (same order + same status)
             let span = 1;
             for (let j = idx + 1; j < dates.length; j++) {
-              if (jobMap[dates[j]]?.ma_dh === job.ma_dh) span++;
+              const nextJob = jobMap[dates[j]];
+              if (nextJob?.ma_dh === job.ma_dh && nextJob?.status === job.status) span++;
               else break;
             }
             const jobWidth = Math.max(span * 38 - 4, 10);
@@ -478,7 +513,187 @@
 
   function showJobInfo(ma_dh) {
     const order = allOrders.find(o => o.ma_dh === ma_dh);
-    if (order) showToast(`📋 ${order.ma_dh} - ${order.ten_kh} - ${order.product?.ten_sp||order.ma_sp} (${Number(order.so_luong).toLocaleString()} cái)`,'success');
+    if (!order) { showToast('⚠️ Không tìm thấy đơn hàng', 'error'); return; }
+    openDetailModal(ma_dh);
+  }
+
+  function closeDetailModal() {
+    document.getElementById('orderDetailModal').classList.remove('active');
+  }
+
+  let lastSplitData = null; // Store last split suggestion response
+
+  async function openDetailModal(ma_dh) {
+    const modal = document.getElementById('orderDetailModal');
+    const content = document.getElementById('detailContent');
+    modal.classList.add('active');
+    content.innerHTML = '<div style="text-align:center;padding:20px;color:#999;">⏳ Đang tải thông tin...</div>';
+    
+    try {
+      const res = await fetch('/api/schedule/split-suggestion', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ma_dh })
+      });
+      const data = await res.json();
+      if (!res.ok) { content.innerHTML = `<div style="text-align:center;padding:20px;color:#d63031;">❌ ${data.msg}</div>`; return; }
+      
+      lastSplitData = data;
+      renderDetailModal(content, data);
+    } catch(e) {
+      content.innerHTML = `<div style="text-align:center;padding:20px;color:#d63031;">❌ Lỗi kết nối: ${e.message}</div>`;
+    }
+  }
+
+  async function executeSplitAssign(ma_dh, suggestionIdx) {
+    if (!lastSplitData || !lastSplitData.split_suggestions) return;
+    const suggestion = lastSplitData.split_suggestions[suggestionIdx];
+    if (!suggestion) return;
+    
+    try {
+      const res = await fetch('/api/schedule/split-assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ma_dh,
+          splits: [{
+            ma_pipe: suggestion.ma_pipe,
+            quantity: suggestion.quantity,
+            start_date: suggestion.start_date
+          }]
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.msg, 'success');
+        closeDetailModal();
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        showToast('❌ ' + data.msg, 'error');
+      }
+    } catch(e) {
+      showToast('❌ Lỗi: ' + e.message, 'error');
+    }
+  }
+
+  async function executeSplitAssignAll(ma_dh) {
+    if (!lastSplitData || !lastSplitData.split_suggestions) return;
+    const suggestions = lastSplitData.split_suggestions;
+    
+    try {
+      const res = await fetch('/api/schedule/split-assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ma_dh,
+          splits: suggestions.map(s => ({
+            ma_pipe: s.ma_pipe,
+            quantity: s.quantity,
+            start_date: s.start_date
+          }))
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(data.msg, 'success');
+        closeDetailModal();
+        setTimeout(() => location.reload(), 1500);
+      } else {
+        showToast('❌ ' + data.msg, 'error');
+      }
+    } catch(e) {
+      showToast('❌ Lỗi: ' + e.message, 'error');
+    }
+  }
+
+  function renderDetailModal(container, data) {
+    const { order, current_schedule, can_meet_deadline, total_capacity_by_deadline, split_suggestions, line_capacity } = data;
+    
+    const isLate = current_schedule?.status === 'overdue' || (!can_meet_deadline && current_schedule);
+    const deadlineStatus = can_meet_deadline 
+      ? '<span style="color:#28a745;">✅ Có thể kịp hạn</span>' 
+      : '<span style="color:#d63031;">❌ Không kịp hạn! Cần chia nhỏ đơn hàng</span>';
+
+    let html = `
+      <div class="dm-section">
+        <h4>📄 Thông tin đơn hàng</h4>
+        <div class="dm-row"><span class="dm-label">Mã đơn</span><span class="dm-value">${order.ma_dh}</span></div>
+        <div class="dm-row"><span class="dm-label">Khách hàng</span><span class="dm-value">${order.ten_kh}</span></div>
+        <div class="dm-row"><span class="dm-label">Sản phẩm</span><span class="dm-value">${order.product}</span></div>
+        <div class="dm-row"><span class="dm-label">Số lượng</span><span class="dm-value">${Number(order.so_luong).toLocaleString()} cái</span></div>
+        <div class="dm-row"><span class="dm-label">Hạn giao</span><span class="dm-value ${order.days_until_delivery < 0 ? 'overdue-text' : ''}">${order.ngay_giao || '—'} ${order.days_until_delivery < 0 ? `(trễ ${Math.abs(order.days_until_delivery)} ngày!)` : `(còn ${order.days_until_delivery} ngày)`}</span></div>
+        <div class="dm-row"><span class="dm-label">Thời gian SX cần</span><span class="dm-value">${order.total_days_needed} ngày (500 cái/ngày)</span></div>
+        <div class="dm-row"><span class="dm-label">Đánh giá</span><span class="dm-value">${deadlineStatus}</span></div>
+      </div>`;
+
+    if (current_schedule) {
+      const isOverdue = current_schedule.status === 'overdue' || current_schedule.status === 'OVERDUE';
+      html += `
+      <div class="dm-section">
+        <h4>🏗️ Đang sản xuất tại: ${current_schedule.ten_pipe}</h4>
+        <div class="dm-row"><span class="dm-label">Vị trí queue</span><span class="dm-value">#${current_schedule.position}</span></div>
+        <div class="dm-row"><span class="dm-label">Bắt đầu</span><span class="dm-value">${current_schedule.start_date || '—'}</span></div>
+        <div class="dm-row"><span class="dm-label">Kết thúc dự kiến</span><span class="dm-value ${isOverdue ? 'overdue-text' : ''}">${current_schedule.end_date || '—'} ${isOverdue ? '🔴 QUÁ HẠN' : ''}</span></div>
+      </div>`;
+    }
+
+    // Split suggestions
+    html += `<div class="dm-section"><h4>💡 Đề xuất phân chia sản xuất</h4>`;
+    
+    if (split_suggestions && split_suggestions.length > 0) {
+      const canMeet = data.can_meet_deadline;
+      html += `<div style="font-size:12px;color:#666;margin-bottom:10px;">
+        Tổng năng lực: <strong>${Number(total_capacity_by_deadline).toLocaleString()} cái</strong> / ${Number(order.so_luong).toLocaleString()} cái cần
+        — ${canMeet ? '✅ Đủ' : '❌ Thiếu ' + Number(order.so_luong - total_capacity_by_deadline).toLocaleString() + ' cái'}
+      </div>`;
+
+      split_suggestions.forEach((s, si) => {
+        const statusClass = s.can_finish_on_time ? 'split-ok' : 'split-warn';
+        html += `
+        <div class="split-item">
+          <div class="split-header">
+            <span class="split-line">🏗️ ${s.ten_pipe}</span>
+            <span class="${statusClass}">${s.can_finish_on_time ? '✅ Đúng hạn' : '⚠️ Trễ hạn'}</span>
+          </div>
+          <div class="split-qty"><strong>${Number(s.quantity).toLocaleString()} cái</strong> (${s.production_days} ngày)</div>
+          <div class="split-dates">📅 ${s.start_date || '?'} → ${s.end_date || '?'}</div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+            <span style="font-size:11px;color:#888;">${s.note || ''}</span>
+            <button class="btn btn-sm ${s.can_finish_on_time ? 'btn-success' : 'btn-primary'}" onclick="executeSplitAssign('${order.ma_dh}', ${si})">🔀 Gán phần này</button>
+          </div>
+        </div>`;
+      });
+      // Add "Assign All" button if multiple suggestions
+      if (split_suggestions.length > 1) {
+        html += `<div style="margin-top:8px;text-align:right;">
+          <button class="btn btn-primary btn-sm" onclick="executeSplitAssignAll('${order.ma_dh}')">⚡ Phân chia & gán tất cả</button>
+        </div>`;
+      }
+    } else {
+      html += `<div style="text-align:center;padding:16px;color:#999;">Không có đề xuất phân chia</div>`;
+    }
+    html += `</div>`;
+
+    // Line capacity overview
+    html += `<div class="dm-section"><h4>📊 Năng lực dây chuyền</h4>`;
+    if (line_capacity && line_capacity.length > 0) {
+      line_capacity.forEach(l => {
+        const pct = order.so_luong > 0 ? Math.round(l.max_produce_by_deadline / order.so_luong * 100) : 0;
+        html += `
+        <div class="dm-row">
+          <span class="dm-label">${l.ten_pipe}</span>
+          <span class="dm-value">${Number(l.max_produce_by_deadline).toLocaleString()} cái (${l.days_available} ngày, ${l.queue_length} đơn chờ)</span>
+        </div>`;
+      });
+    }
+    html += `</div>`;
+
+    html += `
+    <div class="dm-actions">
+      <button class="btn btn-outline" onclick="closeDetailModal()">Đóng</button>
+    </div>`;
+
+    container.innerHTML = html;
   }
 
   function showToast(msg, type) {
