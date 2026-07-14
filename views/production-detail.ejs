@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',Arial,sans-serif; background:#f0f4f8; min-height:100vh; color:#233; }
+    .header { background:linear-gradient(135deg,#1F3864 0%,#2E75B6 100%); padding:16px 40px; display:flex; justify-content:space-between; align-items:center; }
+    .header h1 { color:#fff; font-size:20px; font-weight:700; }
+    .header nav a { color:#fff; text-decoration:none; margin-left:16px; font-size:13px; font-weight:500; padding:7px 14px; border-radius:6px; }
+    .container { max-width:1100px; margin:0 auto; padding:24px 20px 40px; }
+    .card { background:#fff; border-radius:12px; padding:24px; box-shadow:0 2px 12px rgba(0,0,0,0.06); margin-bottom:18px; }
+    .title { font-size:24px; font-weight:700; color:#1F3864; margin-bottom:6px; }
+    .subtitle { color:#666; margin-bottom:20px; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+    @media(max-width:900px){ .grid{grid-template-columns:1fr;} }
+    .section-title { font-size:16px; color:#1F3864; margin-bottom:10px; font-weight:700; }
+    .info-row { display:flex; justify-content:space-between; padding:8px 0; border-bottom:1px solid #eef3f8; font-size:14px; }
+    .info-row:last-child { border-bottom:none; }
+    .status-pill { display:inline-block; padding:4px 10px; border-radius:999px; font-size:12px; font-weight:600; }
+    .badge-pending { background:#fff3cd; color:#856404; }
+    .badge-running { background:#d4edda; color:#155724; }
+    .badge-done { background:#d1ecf1; color:#0c5460; }
+    .step-list { display:flex; flex-direction:column; gap:10px; }
+    .step-item { display:flex; justify-content:space-between; align-items:center; padding:10px 12px; border:1px solid #e8edf5; border-radius:8px; background:#f8fbff; }
+    .step-item strong { color:#1F3864; }
+    .bom-item { padding:10px 12px; border:1px solid #e8edf5; border-radius:8px; margin-bottom:8px; background:#fcfdff; font-size:14px; }
+    .btn { display:inline-block; padding:8px 14px; border-radius:6px; text-decoration:none; font-size:13px; font-weight:600; border:none; cursor:pointer; }
+    .btn-outline { background:transparent; border:1px solid #1F3864; color:#1F3864; }
+    .btn-outline:hover { background:#1F3864; color:#fff; }
+  </style>
+</head>
+<body>
+<div class="header">
+  <h1>🏭 <span>Fabric Production</span></h1>
+  <nav>
+    <a href="/">🏠 Trang chủ</a>
+    <a href="/place-order">📝 Đặt hàng</a>
+    <a href="/admin/production">⚙️ Điều phối</a>
+  </nav>
+</div>
+<div class="container">
+  <a class="btn btn-outline" href="/admin/production" style="margin-bottom:16px">← Quay lại</a>
+  <div class="card">
+    <div class="title">📋 Chi tiết dây chuyền <%= line?.ma_pipe || req.params.id %></div>
+    <div class="subtitle">Theo dõi đơn hàng, BOM và tiến độ các khâu sản xuất</div>
+    <div class="grid">
+      <div>
+        <div class="section-title">Thông tin dây chuyền</div>
+        <div class="info-row"><span>Tên dây chuyền</span><strong><%= line?.ten_pipe || '—' %></strong></div>
+        <div class="info-row"><span>Trạng thái</span><strong><%= line?.status || 'IDLE' %></strong></div>
+        <div class="info-row"><span>Sản phẩm đang làm</span><strong><%= product ? `${product.ten_sp} (${product.ma_sp})` : '—' %></strong></div>
+        <div class="info-row"><span>Đơn hàng</span><strong><%= order ? order.ma_dh : 'Chưa gán' %></strong></div>
+        <div class="info-row"><span>Khách hàng</span><strong><%= order ? order.ten_kh : '—' %></strong></div>
+      </div>
+      <div>
+        <div class="section-title">Tiến độ khâu sản xuất</div>
+        <div class="step-list">
+          <div class="step-item"><strong>Đo</strong><span class="status-pill badge-<%= (line?.step_do_status || 'PENDING').toLowerCase() %>"><%= line?.step_do_status || 'PENDING' %></span></div>
+          <div class="step-item"><strong>May</strong><span class="status-pill badge-<%= (line?.step_may_status || 'PENDING').toLowerCase() %>"><%= line?.step_may_status || 'PENDING' %></span></div>
+          <div class="step-item"><strong>Kiểm thử</strong><span class="status-pill badge-<%= (line?.step_kiem_thu_status || 'PENDING').toLowerCase() %>"><%= line?.step_kiem_thu_status || 'PENDING' %></span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="section-title">BOM và tồn kho</div>
+    <% if (bom.length) { %>
+      <% bom.forEach(item => { %>
+        <div class="bom-item">
+          <strong><%= item.ten_nl %></strong> (<%= item.ma_nl %>)<br>
+          Định mức: <%= item.dinh_muc %> <%= item.don_vi %> · Tồn kho: <%= item.ton_kho ?? '—' %>
+        </div>
+      <% }); %>
+    <% } else { %>
+      <div class="bom-item">Chưa có BOM cho sản phẩm này.</div>
+    <% } %>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',Arial,sans-serif; background:#f0f4f8; min-height:100vh; }
+    .header {
+      background:linear-gradient(135deg,#1F3864 0%,#2E75B6 100%); padding:16px 40px;
+      display:flex; justify-content:space-between; align-items:center;
+      box-shadow:0 4px 20px rgba(31,56,100,0.3);
+    }
+    .header h1 { color:#fff; font-size:20px; font-weight:700; }
+    .header h1 span { font-weight:400; opacity:0.8; }
+    .header nav a {
+      color:#fff; text-decoration:none; margin-left:16px; font-size:13px;
+      font-weight:500; padding:7px 14px; border-radius:6px; transition:background .2s;
+    }
+    .header nav a:hover { background:rgba(255,255,255,0.15); }
+    .header nav a.active { background:rgba(255,255,255,0.2); }
+    .container { max-width:1300px; margin:0 auto; padding:25px 20px; }
+    .page-header {
+      display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-wrap:wrap; gap:12px;
+    }
+    .page-header h1 { font-size:24px; font-weight:700; color:#1F3864; }
+    .page-header .sub { font-size:13px; color:#888; }
+    .btn {
+      padding:10px 22px; border:none; border-radius:8px; font-size:14px; font-weight:600;
+      cursor:pointer; font-family:inherit; transition:all .2s; text-decoration:none; display:inline-flex; align-items:center; gap:6px;
+    }
+    .btn-primary { background:linear-gradient(135deg,#1F3864,#2E75B6); color:#fff; }
+    .btn-primary:hover { transform:translateY(-1px); box-shadow:0 4px 12px rgba(31,56,100,0.3); }
+    .btn-sm { padding:6px 14px; font-size:12px; }
+    .btn-edit { background:#ffc107; color:#333; }
+    .btn-edit:hover { background:#e0a800; }
+    .btn-del { background:#dc3545; color:#fff; }
+    .btn-del:hover { background:#c82333; }
+    .btn-green { background:#28a745; color:#fff; }
+    .btn-green:hover { background:#218838; }
+    .btn-outline { background:transparent; border:2px solid #1F3864; color:#1F3864; }
+    .btn-outline:hover { background:#1F3864; color:#fff; }
+    .table-card { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.06); overflow:hidden; }
+    table { width:100%; border-collapse:collapse; }
+    thead th {
+      text-align:left; padding:12px 14px; font-size:11px; font-weight:600;
+      color:#888; text-transform:uppercase; letter-spacing:0.5px;
+      background:#f8faff; border-bottom:2px solid #e8edf5;
+    }
+    tbody td { padding:12px 14px; font-size:13px; color:#333; border-bottom:1px solid #f0f2f5; }
+    tbody tr:hover td { background:#f8faff; }
+    .stock-low { color:#dc3545; font-weight:700; }
+    .stock-mid { color:#ffc107; font-weight:600; }
+    .stock-ok  { color:#28a745; font-weight:600; }
+    .modal-overlay {
+      position:fixed; top:0; left:0; width:100%; height:100%;
+      background:rgba(0,0,0,0.5); display:none; align-items:center; justify-content:center; z-index:1000;
+    }
+    .modal-overlay.active { display:flex; }
+    .modal {
+      background:#fff; border-radius:12px; padding:28px 32px; max-width:520px; width:90%;
+      box-shadow:0 10px 40px rgba(0,0,0,0.2); max-height:90vh; overflow-y:auto;
+    }
+    .modal h3 { font-size:18px; color:#1F3864; margin-bottom:16px; }
+    .form-group { margin-bottom:14px; }
+    .form-group label { display:block; font-size:12px; font-weight:600; color:#555; margin-bottom:4px; }
+    .form-group input, .form-group select {
+      width:100%; padding:9px 12px; border:2px solid #e0e6ed; border-radius:6px;
+      font-size:13px; font-family:inherit; transition:border-color .2s;
+    }
+    .form-group input:focus, .form-group select:focus { outline:none; border-color:#2E75B6; }
+    .form-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .modal .btn-row { display:flex; gap:10px; justify-content:flex-end; margin-top:18px; }
+    .toast {
+      position:fixed; top:20px; right:20px; padding:14px 22px; border-radius:8px;
+      font-size:14px; font-weight:500; z-index:2000; display:none;
+      box-shadow:0 4px 15px rgba(0,0,0,0.15); animation:slideIn .3s;
+    }
+    .toast-success { background:#d4edda; color:#155724; border:1px solid #c3e6cb; display:block; }
+    .toast-error { background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; display:block; }
+    @keyframes slideIn { from { transform:translateX(100px); opacity:0; } to { transform:translateX(0); opacity:1; } }
+    .footer { text-align:center; padding:20px; color:#999; font-size:13px; margin-top:20px; border-top:1px solid #e0e6ed; }
+  </style>
+</head>
+<body>
+<div class="header">
+  <h1>🏭 <span>Fabric Production</span></h1>
+  <nav>
+    <a href="/">🏠 Trang chủ</a>
+    <a href="/place-order">📝 Đặt hàng</a>
+    <a href="/admin/orders">📋 Đơn hàng</a>
+    <a href="/admin/production">⚙️ Điều phối</a>
+    <a href="/admin/materials" class="active">🧵 Kho</a>
+    <a href="/admin/products">📦 SP</a>
+  </nav>
+</div>
+<div class="container">
+  <div class="page-header">
+    <div><h1>🧵 Quản lý Nguyên liệu</h1><div class="sub">Tổng số: <strong><%= materials.length %></strong> nguyên liệu</div></div>
+    <button class="btn btn-primary" onclick="openModal(null)">➕ Thêm nguyên liệu</button>
+  </div>
+  <div class="table-card">
+    <table>
+      <thead><tr><th>Mã NL</th><th>Tên nguyên liệu</th><th>Số lượng</th><th>Đơn vị</th><th>Loại</th><th>Đơn giá</th><th>Nhà cung cấp</th><th>Thao tác</th></tr></thead>
+      <tbody>
+        <% materials.forEach(m => {
+          let sc = m.so_luong < 100 ? 'stock-low' : (m.so_luong < 500 ? 'stock-mid' : 'stock-ok');
+        %>
+        <tr id="row-<%= m.ma_nl %>">
+          <td><strong><%= m.ma_nl %></strong></td>
+          <td><%= m.ten_nl %></td>
+          <td class="<%= sc %>"><%= m.so_luong.toLocaleString() %></td>
+          <td><%= m.unit || '—' %></td>
+          <td><%= m.type || '—' %></td>
+          <td><%= m.costPerUnit ? Number(m.costPerUnit).toLocaleString() + 'đ' : '—' %></td>
+          <td><%= m.supplier || '—' %></td>
+          <td>
+            <button class="btn btn-edit btn-sm" onclick='openModal(<%= JSON.stringify(m) %>)'>✏️</button>
+            <button class="btn btn-del btn-sm" onclick="del('<%= m.ma_nl %>')">🗑</button>
+          </td>
+        </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</div>
+<div class="footer">© 2026 Fabric Production Management System</div>
+<div id="toast" class="toast"></div>
+
+<!-- Modal -->
+<div id="matModal" class="modal-overlay">
+  <div class="modal">
+    <h3 id="modalTitle">➕ Thêm nguyên liệu</h3>
+    <form id="matForm" onsubmit="return save(event)">
+      <input type="hidden" id="editMode" value="0">
+      <div class="form-row">
+        <div class="form-group"><label>Mã NL *</label><input type="text" id="f_ma_nl" required placeholder="VD: VAI003"></div>
+        <div class="form-group"><label>Tên NL *</label><input type="text" id="f_ten_nl" required placeholder="VD: Vải denim"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Số lượng</label><input type="number" id="f_so_luong" min="0" value="0"></div>
+        <div class="form-group"><label>Đơn vị</label><input type="text" id="f_unit" placeholder="m, cái, kg..."></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Loại</label><select id="f_type"><option value="fabric">Vải</option><option value="thread">Chỉ</option><option value="button">Cúc</option><option value="accessory">Phụ kiện</option><option value="other">Khác</option></select></div>
+        <div class="form-group"><label>Đơn giá</label><input type="number" id="f_cost" min="0" step="1000"></div>
+      </div>
+      <div class="form-group"><label>Nhà cung cấp</label><input type="text" id="f_supplier" placeholder="VD: Công ty Dệt Nam Định"></div>
+      <div class="btn-row">
+        <button type="button" class="btn btn-outline" onclick="closeModal()">Hủy</button>
+        <button type="submit" class="btn btn-primary" id="saveBtn">💾 Lưu</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  function openModal(d) {
+    document.getElementById('matModal').classList.add('active');
+    if (d) {
+      document.getElementById('modalTitle').textContent = '✏️ Sửa nguyên liệu';
+      document.getElementById('editMode').value = '1';
+      document.getElementById('f_ma_nl').value = d.ma_nl; document.getElementById('f_ma_nl').readOnly = true;
+      document.getElementById('f_ten_nl').value = d.ten_nl; document.getElementById('f_so_luong').value = d.so_luong;
+      document.getElementById('f_unit').value = d.unit||''; document.getElementById('f_type').value = d.type||'other';
+      document.getElementById('f_cost').value = d.costPerUnit||''; document.getElementById('f_supplier').value = d.supplier||'';
+    } else {
+      document.getElementById('modalTitle').textContent = '➕ Thêm nguyên liệu';
+      document.getElementById('editMode').value = '0'; document.getElementById('f_ma_nl').readOnly = false;
+      document.getElementById('matForm').reset();
+    }
+  }
+  function closeModal() { document.getElementById('matModal').classList.remove('active'); }
+  async function save(e) {
+    e.preventDefault(); const isEdit = document.getElementById('editMode').value==='1';
+    const d = { ma_nl: document.getElementById('f_ma_nl').value.trim(), ten_nl: document.getElementById('f_ten_nl').value.trim(), so_luong: parseInt(document.getElementById('f_so_luong').value)||0, unit: document.getElementById('f_unit').value.trim(), type: document.getElementById('f_type').value, costPerUnit: parseFloat(document.getElementById('f_cost').value)||null, supplier: document.getElementById('f_supplier').value.trim() };
+    try {
+      const res = isEdit ? await fetch('/api/materials/'+d.ma_nl,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}) : await fetch('/api/materials',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});
+      const r = await res.json();
+      if (res.ok) { toast(isEdit?'✅ Đã cập nhật!':'✅ Đã thêm!','success'); closeModal(); setTimeout(()=>location.reload(),800); }
+      else { toast('❌ '+(r.msg||'Lỗi'),'error'); }
+    } catch(e) { toast('❌ Lỗi kết nối','error'); }
+  }
+  async function del(ma_nl) {
+    if (!confirm(`Xóa ${ma_nl}?`)) return;
+    try {
+      const res = await fetch('/api/materials/'+ma_nl,{method:'DELETE'});
+      if (res.ok) { toast(`✅ Đã xóa`,'success'); document.getElementById('row-'+ma_nl)?.remove(); }
+      else { const r=await res.json(); toast('❌ '+(r.msg||'Lỗi (đã dùng trong BOM?)'),'error'); }
+    } catch(e) { toast('❌ Lỗi kết nối','error'); }
+  }
+  function toast(msg,type){const t=document.getElementById('toast');t.className='toast toast-'+type;t.innerHTML=msg;setTimeout(()=>{t.style.display='none';},3000);}
+</script>
+</body>
+</html>

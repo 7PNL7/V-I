@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',Arial,sans-serif; background:#f0f4f8; min-height:100vh; }
+    
+    .header {
+      background:linear-gradient(135deg,#1F3864 0%,#2E75B6 100%); padding:16px 40px;
+      display:flex; justify-content:space-between; align-items:center;
+      box-shadow:0 4px 20px rgba(31,56,100,0.3);
+    }
+    .header h1 { color:#fff; font-size:20px; font-weight:700; }
+    .header h1 span { font-weight:400; opacity:0.8; }
+    .header nav a {
+      color:#fff; text-decoration:none; margin-left:16px; font-size:13px;
+      font-weight:500; padding:7px 14px; border-radius:6px; transition:background .2s;
+    }
+    .header nav a:hover { background:rgba(255,255,255,0.15); }
+    .header nav a.active { background:rgba(255,255,255,0.2); }
+
+    .container { max-width:1300px; margin:0 auto; padding:25px 20px; }
+    .page-title { font-size:26px; font-weight:700; color:#1F3864; margin-bottom:6px; }
+    .page-subtitle { color:#666; font-size:14px; margin-bottom:25px; }
+
+    .grid { display:grid; grid-template-columns:1.4fr 1fr; gap:25px; }
+    @media(max-width:900px) { .grid { grid-template-columns:1fr; } }
+
+    .card {
+      background:#fff; border-radius:12px; padding:24px;
+      box-shadow:0 2px 12px rgba(0,0,0,0.06);
+    }
+    .card h2 {
+      font-size:17px; font-weight:600; color:#1F3864;
+      margin-bottom:16px; padding-bottom:12px;
+      border-bottom:2px solid #e8edf5;
+    }
+
+    /* Pipeline Cards */
+    .pipeline-list { display:flex; flex-direction:column; gap:14px; }
+    .pipe-card {
+      border:2px solid #e8edf5; border-radius:10px; padding:16px 18px;
+      transition:all .2s; position:relative;
+    }
+    .pipe-card:hover { border-color:#2E75B6; box-shadow:0 2px 8px rgba(46,117,182,0.1); }
+    .pipe-idle { border-left:4px solid #6c757d; }
+    .pipe-running { border-left:4px solid #28a745; background:#f8fff8; }
+    .pipe-stopped { border-left:4px solid #dc3545; background:#fff8f8; }
+    
+    .pipe-header {
+      display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;
+    }
+    .pipe-name { font-weight:600; font-size:15px; color:#333; }
+    .pipe-code { font-size:12px; color:#999; font-weight:400; margin-left:6px; }
+
+    .status-badge {
+      padding:4px 12px; border-radius:20px; font-size:11px; font-weight:600;
+    }
+    .sb-idle { background:#e9ecef; color:#495057; }
+    .sb-running { background:#d4edda; color:#155724; }
+    .sb-stopped { background:#f8d7da; color:#721c24; }
+
+    .pipe-product {
+      font-size:13px; color:#555; margin-bottom:10px;
+    }
+    .pipe-product strong { color:#1F3864; }
+
+    .pipe-actions { display:flex; gap:8px; flex-wrap:wrap; }
+
+    .btn {
+      padding:7px 16px; border:none; border-radius:6px; font-size:12px;
+      font-weight:600; cursor:pointer; transition:all .2s; font-family:inherit;
+    }
+    .btn-sm { padding:5px 12px; font-size:11px; }
+    .btn-primary { background:#1F3864; color:#fff; }
+    .btn-primary:hover { background:#2E75B6; }
+    .btn-success { background:#28a745; color:#fff; }
+    .btn-success:hover { background:#218838; }
+    .btn-danger { background:#dc3545; color:#fff; }
+    .btn-danger:hover { background:#c82333; }
+    .btn-warning { background:#ffc107; color:#333; }
+    .btn-warning:hover { background:#e0a800; }
+    .btn-outline { background:transparent; border:2px solid #1F3864; color:#1F3864; }
+    .btn-outline:hover { background:#1F3864; color:#fff; }
+
+    /* Orders Table */
+    .orders-table { width:100%; border-collapse:collapse; }
+    .orders-table th {
+      text-align:left; padding:8px 10px; font-size:11px; font-weight:600;
+      color:#888; text-transform:uppercase; border-bottom:2px solid #e8edf5;
+    }
+    .orders-table td { padding:10px; font-size:13px; color:#333; border-bottom:1px solid #f0f2f5; }
+    .orders-table tr:hover td { background:#f8faff; }
+    .orders-table tr.selected td { background:#e8f4ff; }
+
+    .badge {
+      display:inline-block; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:600;
+    }
+    .badge-pending { background:#fff3cd; color:#856404; }
+    .badge-approved { background:#d4edda; color:#155724; }
+    .badge-production { background:#cce5ff; color:#004085; }
+    .badge-completed { background:#d1ecf1; color:#0c5460; }
+
+    .assign-bar {
+      margin-top:16px; padding:16px; background:#e8f4ff; border-radius:8px;
+      display:none; gap:10px; align-items:center; flex-wrap:wrap;
+    }
+    .assign-bar.visible { display:flex; }
+    .assign-bar select {
+      padding:8px 12px; border:2px solid #cce5ff; border-radius:6px;
+      font-size:13px; flex:1; min-width:150px;
+    }
+
+    .order-option {
+      display:flex; justify-content:space-between; align-items:center;
+      padding:12px 16px; margin-bottom:6px; border:2px solid #e8edf5;
+      border-radius:8px; cursor:pointer; transition:all .15s;
+    }
+    .order-option:hover { border-color:#2E75B6; background:#f0f7ff; }
+    .order-option.selected { border-color:#1F3864; background:#e8f0fe; }
+    .order-option .oo-left { display:flex; flex-direction:column; gap:2px; }
+    .order-option .oo-left strong { font-size:14px; color:#1F3864; }
+    .order-option .oo-left span { font-size:12px; color:#666; }
+    .order-option .oo-right { display:flex; flex-direction:column; align-items:flex-end; gap:2px; }
+    .order-option .oo-right span { font-size:12px; color:#555; }
+
+    .empty-state { text-align:center; padding:40px; color:#999; }
+
+    /* Modal */
+    .modal-overlay {
+      position:fixed; top:0; left:0; width:100%; height:100%;
+      background:rgba(0,0,0,0.5); display:none; align-items:center; justify-content:center; z-index:1000;
+    }
+    .modal-overlay.active { display:flex; }
+    .modal {
+      background:#fff; border-radius:12px; padding:30px; max-width:500px; width:90%;
+      box-shadow:0 10px 40px rgba(0,0,0,0.2);
+    }
+    .detail-grid { display:grid; gap:12px; }
+    .detail-section {
+      border:1px solid #e8edf5; border-radius:10px; padding:14px; background:#f8fbff;
+    }
+    .detail-section h4 { font-size:15px; color:#1F3864; margin-bottom:8px; }
+    .detail-row { display:flex; justify-content:space-between; gap:12px; padding:6px 0; border-bottom:1px solid #eef3f8; font-size:13px; }
+    .detail-row:last-child { border-bottom:none; }
+    .detail-step {
+      display:flex; justify-content:space-between; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid #eef3f8;
+    }
+    .detail-step:last-child { border-bottom:none; }
+    .detail-step strong { font-size:13px; color:#1F3864; }
+    .detail-bom-list { display:flex; flex-direction:column; gap:8px; }
+    .bom-item { font-size:13px; padding:8px 10px; border-radius:8px; background:#fff; border:1px solid #e8edf5; }
+    .modal h3 { font-size:18px; color:#1F3864; margin-bottom:15px; }
+    .modal p { font-size:14px; color:#555; margin-bottom:20px; line-height:1.5; }
+    .modal .btn-row { display:flex; gap:12px; justify-content:flex-end; }
+    .modal .btn-row .btn { min-width:100px; padding:10px 20px; font-size:14px; }
+
+    .footer { text-align:center; padding:20px; color:#999; font-size:13px; margin-top:20px; }
+    .toast {
+      position:fixed; top:20px; right:20px; padding:14px 22px; border-radius:8px;
+      font-size:14px; font-weight:500; z-index:2000; display:none;
+      box-shadow:0 4px 15px rgba(0,0,0,0.15); animation:slideIn .3s;
+    }
+    .toast-success { background:#d4edda; color:#155724; border:1px solid #c3e6cb; display:block; }
+    .toast-error { background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; display:block; }
+    @keyframes slideIn { from { transform:translateX(100px); opacity:0; } to { transform:translateX(0); opacity:1; } }
+    .hidden { display:none !important; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🏭 <span>Fabric Production</span></h1>
+  <nav>
+    <a href="/">🏠 Trang chủ</a>
+    <a href="/place-order">📝 Đặt hàng</a>
+    <a href="/admin/orders">📋 Đơn hàng</a>
+    <a href="/admin/production" class="active">⚙️ Điều phối</a>
+    <a href="/admin/materials">🧵 Kho</a>
+    <a href="/admin/products">📦 SP</a>
+  </nav>
+</div>
+
+<div class="container">
+  <h1 class="page-title">⚙️ Điều phối sản xuất</h1>
+  <p class="page-subtitle">Theo dõi dây chuyền và phân bổ đơn hàng vào sản xuất</p>
+
+  <!-- Toast notification -->
+  <div id="toast" class="toast"></div>
+
+  <div class="grid">
+    <!-- LEFT: Pipeline cards -->
+    <div class="card">
+      <h2>🏗️ Dây chuyền sản xuất</h2>
+      <div class="pipeline-list" id="pipelineList">
+        <!-- Rendered by JS -->
+      </div>
+    </div>
+
+    <!-- RIGHT: Pending orders -->
+    <div class="card">
+      <h2>📋 Đơn hàng chờ sản xuất</h2>
+      <div id="pendingOrders">
+        <!-- Rendered by JS -->
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">© 2026 Fabric Production Management System</div>
+
+<!-- Order Picker Modal -->
+<div id="orderPickerModal" class="modal-overlay">
+  <div class="modal" style="max-width:600px">
+    <h3>📋 Chọn đơn hàng để gán</h3>
+    <p style="margin-bottom:15px">Dây chuyền: <strong id="orderPickerPipe"></strong></p>
+    <div id="orderPickerList" style="max-height:300px;overflow-y:auto;margin-bottom:16px"></div>
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="closeOrderPicker()">Hủy</button>
+      <button class="btn btn-primary" onclick="confirmOrderAssign()">✅ Gán đơn</button>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Modal -->
+<div id="confirmModal" class="modal-overlay">
+  <div class="modal">
+    <h3>⚠️ Xác nhận</h3>
+    <p id="modalMsg"></p>
+    <div class="btn-row">
+      <button class="btn btn-outline" onclick="closeModal()">Hủy</button>
+      <button class="btn btn-primary" id="modalConfirmBtn" onclick="executeAction()">Xác nhận</button>
+    </div>
+  </div>
+</div>
+
+<!-- Detail Modal -->
+<div id="detailModal" class="modal-overlay">
+  <div class="modal" style="max-width:760px; max-height:85vh; overflow-y:auto;">
+    <h3 id="detailModalTitle">📋 Chi tiết dây chuyền</h3>
+    <div id="detailModalBody"></div>
+    <div class="btn-row" style="margin-top:18px">
+      <button class="btn btn-outline" onclick="closeDetailModal()">Đóng</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  let pendingAction = null; // { type, data }
+
+  // ============ LOAD DATA ============
+  async function loadData() {
+    await Promise.all([loadPipelines(), loadPendingOrders()]);
+  }
+
+  async function loadPipelines() {
+    const res = await fetch('/api/production-lines');
+    const lines = await res.json();
+    const container = document.getElementById('pipelineList');
+
+    container.innerHTML = lines.map(l => {
+      const statusClass = l.status === 'RUNNING' ? 'pipe-running' : l.status === 'STOPPED' ? 'pipe-stopped' : 'pipe-idle';
+      const badgeClass = l.status === 'RUNNING' ? 'sb-running' : l.status === 'STOPPED' ? 'sb-stopped' : 'sb-idle';
+      const prodName = l.product ? l.product.ten_sp : '—';
+      const prodCode = l.product ? l.product.ma_sp : '';
+
+      return `<div class="pipe-card ${statusClass}">
+        <div class="pipe-header">
+          <div>
+            <span class="pipe-name">${l.ten_pipe}</span>
+            <span class="pipe-code">${l.ma_pipe}</span>
+          </div>
+          <span class="status-badge ${badgeClass}">${l.status}</span>
+        </div>
+        <div class="pipe-product">
+          <strong>Sản phẩm:</strong> ${prodName} ${prodCode ? '('+prodCode+')' : ''}
+        </div>
+        <div class="pipe-actions">
+          <a class="btn btn-outline btn-sm" href="/admin/production/${l.ma_pipe}/detail">👁 Xem chi tiết</a>
+          ${ l.status === 'IDLE' ? `<button class="btn btn-success btn-sm" onclick="assignToPipe('${l.ma_pipe}')">➕ Gán đơn</button>` : '' }
+          ${ l.status === 'RUNNING' ? `<button class="btn btn-warning btn-sm" onclick="stopPipe('${l.ma_pipe}')">⏸ Tạm dừng</button>` : '' }
+          ${ l.status === 'IDLE' && l.ma_sp_dang_lam ? `<button class="btn btn-success btn-sm" onclick="startPipe('${l.ma_pipe}')">▶ Bắt đầu</button>` : '' }
+          ${ l.status !== 'IDLE' ? `<button class="btn btn-danger btn-sm" onclick="stopPipe('${l.ma_pipe}')">⏹ Dừng</button>` : '' }
+          ${ l.status === 'STOPPED' ? `<button class="btn btn-success btn-sm" onclick="startPipe('${l.ma_pipe}')">▶ Tiếp tục</button>` : '' }
+          ${ l.status === 'STOPPED' ? `<button class="btn btn-danger btn-sm" onclick="clearPipe('${l.ma_pipe}')">🗑 Giải phóng</button>` : '' }
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  async function loadPendingOrders() {
+    const res = await fetch('/api/orders');
+    const orders = await res.json();
+    const container = document.getElementById('pendingOrders');
+    const pending = orders.filter(o => o.status === 'pending' || o.status === 'approved');
+    
+    if (!pending.length) {
+      container.innerHTML = `<div class="empty-state"><h3>✅ Tất cả đơn đã được xử lý</h3></div>`;
+      return;
+    }
+
+    let html = `<table class="orders-table">
+      <tr><th>Mã ĐH</th><th>Khách</th><th>SP</th><th>SL</th><th>Giao</th><th></th></tr>`;
+    pending.forEach(o => {
+      html += `<tr>
+        <td><strong>${o.ma_dh}</strong></td>
+        <td>${o.ten_kh}</td>
+        <td>${o.product ? o.product.ten_sp : o.ma_sp}</td>
+        <td>${Number(o.so_luong).toLocaleString()}</td>
+        <td style="font-size:12px">${o.ngay_giao || '—'}</td>
+        <td><span class="badge badge-${o.status}">${o.status}</span></td>
+      </tr>`;
+    });
+    html += `</table>`;
+    container.innerHTML = html;
+  }
+
+  // ============ ACTIONS ============
+  let selectedPipe = '';
+  let selectedOrder = null;
+
+  function assignToPipe(pipeId) {
+    selectedPipe = pipeId;
+    // Fetch pending orders and show modal
+    fetch('/api/orders').then(r => r.json()).then(orders => {
+      const pending = orders.filter(o => o.status === 'pending' || o.status === 'approved');
+      if (!pending.length) {
+        return showToast('Không có đơn hàng nào chờ!', 'error');
+      }
+      showOrderPickerModal(pending, pipeId);
+    });
+  }
+
+  function showOrderPickerModal(orders, pipeId) {
+    const modal = document.getElementById('orderPickerModal');
+    const list = document.getElementById('orderPickerList');
+    const pipeLabel = document.getElementById('orderPickerPipe');
+    pipeLabel.textContent = pipeId;
+    
+    list.innerHTML = orders.map(o => `
+      <div class="order-option" onclick="selectOrderOption(this, '${o.ma_dh}')">
+        <div class="oo-left">
+          <strong>${o.ma_dh}</strong>
+          <span>${o.product ? o.product.ten_sp : o.ma_sp}</span>
+        </div>
+        <div class="oo-right">
+          <span>${Number(o.so_luong).toLocaleString()} cái</span>
+          <span>Giao: ${o.ngay_giao || '—'}</span>
+        </div>
+      </div>
+    `).join('');
+    
+    selectedOrder = orders[0].ma_dh;
+    modal.classList.add('active');
+  }
+
+  function selectOrderOption(el, ma_dh) {
+    document.querySelectorAll('.order-option').forEach(e => e.classList.remove('selected'));
+    el.classList.add('selected');
+    selectedOrder = ma_dh;
+  }
+
+  function closeOrderPicker() {
+    document.getElementById('orderPickerModal').classList.remove('active');
+    selectedOrder = null;
+  }
+
+  async function confirmOrderAssign() {
+    if (!selectedOrder || !selectedPipe) return;
+    const pipeId = selectedPipe;
+    const orderId = selectedOrder;
+    
+    const res = await fetch('/api/orders');
+    const orders = await res.json();
+    const order = orders.find(o => o.ma_dh === orderId);
+    if (!order) return showToast('Lỗi: không tìm thấy đơn!', 'error');
+
+    closeOrderPicker();
+    showModal(`Gán đơn <strong>${order.ma_dh}</strong> (${order.product ? order.product.ten_sp : ''}) vào <strong>${pipeId}</strong>?`, async () => {
+      const spCode = order.ma_sp;
+      const r1 = await fetch('/api/production-lines/' + pipeId + '/status', {
+        method: 'PUT',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ status: 'RUNNING', ma_sp_dang_lam: spCode, ma_dh_dang_lam: order.ma_dh })
+      });
+      const r2 = await fetch('/api/orders/' + order.ma_dh + '/status', {
+        method: 'PUT',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ status: 'in_production' })
+      });
+      if (r1.ok && r2.ok) {
+        showToast(`✅ Đã gán ${order.ma_dh} vào ${pipeId}`, 'success');
+        await loadData();
+      } else {
+        showToast('❌ Lỗi khi gán đơn hàng!', 'error');
+      }
+    });
+  }
+
+  async function startPipe(pipeId) {
+    showModal(`Bắt đầu dây chuyền <strong>${pipeId}</strong>?`, async () => {
+      const res = await fetch('/api/production-lines/' + pipeId + '/status', {
+        method: 'PUT',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ status: 'RUNNING' })
+      });
+      if (res.ok) { showToast(`✅ ${pipeId} đã chạy`, 'success'); await loadData(); }
+    });
+  }
+
+  async function stopPipe(pipeId) {
+    showModal(`Dừng dây chuyền <strong>${pipeId}</strong>?`, async () => {
+      const res = await fetch('/api/production-lines/' + pipeId + '/status', {
+        method: 'PUT',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ status: 'STOPPED' })
+      });
+      if (res.ok) { showToast(`⏸ ${pipeId} đã dừng`, 'success'); await loadData(); }
+    });
+  }
+
+  async function clearPipe(pipeId) {
+    showModal(`Giải phóng dây chuyền <strong>${pipeId}</strong>? (SP hiện tại sẽ được bỏ)`, async () => {
+      const res = await fetch('/api/production-lines/' + pipeId + '/status', {
+        method: 'PUT',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ status: 'IDLE', ma_sp_dang_lam: null })
+      });
+      if (res.ok) { showToast(`✅ ${pipeId} đã sẵn sàng`, 'success'); await loadData(); }
+    });
+  }
+
+  async function openPipelineDetail(pipeId) {
+    const res = await fetch('/api/production-lines/' + pipeId + '/detail');
+    const data = await res.json();
+    const body = document.getElementById('detailModalBody');
+    const title = document.getElementById('detailModalTitle');
+    const pipeline = data.pipeline || {};
+    const order = data.order;
+    const product = data.product;
+    const bomItems = data.bom || [];
+
+    title.innerHTML = `📋 Chi tiết ${pipeId}`;
+    body.innerHTML = `
+      <div class="detail-grid">
+        <div class="detail-section">
+          <h4>Thông tin đơn hàng</h4>
+          <div class="detail-row"><span>Đơn hàng</span><strong>${order ? order.ma_dh : 'Chưa gán'}</strong></div>
+          <div class="detail-row"><span>Khách hàng</span><strong>${order ? order.ten_kh : '—'}</strong></div>
+          <div class="detail-row"><span>Sản phẩm</span><strong>${product ? product.ten_sp : '—'}</strong></div>
+          <div class="detail-row"><span>Mã SP</span><strong>${product ? product.ma_sp : '—'}</strong></div>
+        </div>
+        <div class="detail-section">
+          <h4>Khâu sản xuất</h4>
+          <div class="detail-step">
+            <strong>Đo</strong>
+            <div>
+              <span class="badge badge-${(pipeline.step_do_status || 'PENDING').toLowerCase()}">${pipeline.step_do_status || 'PENDING'}</span>
+              ${renderStepAction(pipeId, 'do', pipeline.step_do_status)}
+            </div>
+          </div>
+          <div class="detail-step">
+            <strong>May</strong>
+            <div>
+              <span class="badge badge-${(pipeline.step_may_status || 'PENDING').toLowerCase()}">${pipeline.step_may_status || 'PENDING'}</span>
+              ${renderStepAction(pipeId, 'may', pipeline.step_may_status)}
+            </div>
+          </div>
+          <div class="detail-step">
+            <strong>Kiểm thử</strong>
+            <div>
+              <span class="badge badge-${(pipeline.step_kiem_thu_status || 'PENDING').toLowerCase()}">${pipeline.step_kiem_thu_status || 'PENDING'}</span>
+              ${renderStepAction(pipeId, 'kiem-thu', pipeline.step_kiem_thu_status)}
+            </div>
+          </div>
+        </div>
+        <div class="detail-section">
+          <h4>BOM và tồn kho</h4>
+          ${bomItems.length ? `<div class="detail-bom-list">${bomItems.map(item => `<div class="bom-item">${item.ten_nl} (${item.ma_nl}) — ${item.dinh_muc} ${item.don_vi} · Tồn kho: ${item.ton_kho ?? '—'}</div>`).join('')}</div>` : '<p style="font-size:13px;color:#777">Chưa có BOM cho sản phẩm này.</p>'}
+        </div>
+      </div>
+    `;
+    document.getElementById('detailModal').classList.add('active');
+  }
+
+  function renderStepAction(pipeId, step, status) {
+    if (status === 'DONE') return '<span style="font-size:12px;color:#155724">Đã hoàn thành</span>';
+    if (status === 'RUNNING') return `<button class="btn btn-warning btn-sm" onclick="updateStepStatus('${pipeId}', '${step}', 'DONE')">Kết thúc</button>`;
+    return `<button class="btn btn-success btn-sm" onclick="updateStepStatus('${pipeId}', '${step}', 'RUNNING')">Bắt đầu</button>`;
+  }
+
+  async function updateStepStatus(pipeId, step, status) {
+    const res = await fetch('/api/production-lines/' + pipeId + '/steps', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ step, status })
+    });
+    if (res.ok) {
+      showToast('✅ Cập nhật khâu sản xuất thành công', 'success');
+      await loadData();
+      await openPipelineDetail(pipeId);
+    } else {
+      showToast('❌ Không thể cập nhật khâu sản xuất', 'error');
+    }
+  }
+
+  function closeDetailModal() {
+    document.getElementById('detailModal').classList.remove('active');
+  }
+
+  function showModal(msg, action) {
+    document.getElementById('modalMsg').innerHTML = msg;
+    document.getElementById('confirmModal').classList.add('active');
+    pendingAction = action;
+  }
+  function closeModal() {
+    document.getElementById('confirmModal').classList.remove('active');
+    pendingAction = null;
+  }
+  function executeAction() {
+    if (pendingAction) pendingAction();
+    closeModal();
+  }
+
+  function showToast(msg, type) {
+    const t = document.getElementById('toast');
+    t.className = 'toast toast-' + type;
+    t.innerHTML = msg;
+    setTimeout(() => { t.style.display = 'none'; }, 4000);
+  }
+
+  // Initial load
+  loadData();
+  // Auto refresh every 15s
+  setInterval(loadData, 15000);
+</script>
+
+</body>
+</html>

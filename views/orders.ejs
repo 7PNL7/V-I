@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',Arial,sans-serif; background:#f0f4f8; min-height:100vh; }
+
+    .header {
+      background:linear-gradient(135deg,#1F3864 0%,#2E75B6 100%); padding:16px 40px;
+      display:flex; justify-content:space-between; align-items:center;
+      box-shadow:0 4px 20px rgba(31,56,100,0.3);
+    }
+    .header h1 { color:#fff; font-size:20px; font-weight:700; }
+    .header h1 span { font-weight:400; opacity:0.8; }
+    .header nav a {
+      color:#fff; text-decoration:none; margin-left:16px; font-size:13px;
+      font-weight:500; padding:7px 14px; border-radius:6px; transition:background .2s;
+    }
+    .header nav a:hover { background:rgba(255,255,255,0.15); }
+    .header nav a.active { background:rgba(255,255,255,0.2); }
+
+    .container { max-width:1300px; margin:0 auto; padding:25px 20px; }
+
+    .page-header {
+      display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:12px;
+    }
+    .page-header h1 { font-size:24px; font-weight:700; color:#1F3864; }
+    .page-header .sub { font-size:13px; color:#888; }
+    .page-header .btn {
+      padding:10px 22px; background:linear-gradient(135deg,#1F3864,#2E75B6);
+      color:#fff; border:none; border-radius:8px; font-size:14px; font-weight:600;
+      cursor:pointer; text-decoration:none; transition:all .2s;
+    }
+    .page-header .btn:hover { transform:translateY(-1px); box-shadow:0 4px 12px rgba(31,56,100,0.3); }
+
+    /* Filters */
+    .filters {
+      display:flex; gap:10px; margin-bottom:18px; flex-wrap:wrap;
+    }
+    .filters .filter-btn {
+      padding:6px 16px; border-radius:20px; font-size:12px; font-weight:600;
+      border:2px solid #e0e6ed; background:#fff; cursor:pointer; transition:all .15s;
+      color:#555; font-family:inherit;
+    }
+    .filters .filter-btn:hover { border-color:#2E75B6; color:#2E75B6; }
+    .filters .filter-btn.active { background:#1F3864; color:#fff; border-color:#1F3864; }
+
+    /* Table */
+    .table-card {
+      background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.06); overflow:hidden;
+    }
+    table { width:100%; border-collapse:collapse; }
+    thead th {
+      text-align:left; padding:12px 14px; font-size:11px; font-weight:600;
+      color:#888; text-transform:uppercase; letter-spacing:0.5px;
+      background:#f8faff; border-bottom:2px solid #e8edf5;
+    }
+    tbody td { padding:12px 14px; font-size:13px; color:#333; border-bottom:1px solid #f0f2f5; }
+    tbody tr:hover td { background:#f8faff; }
+
+    .badge {
+      display:inline-block; padding:3px 10px; border-radius:20px;
+      font-size:11px; font-weight:600;
+    }
+    .badge-pending { background:#fff3cd; color:#856404; }
+    .badge-approved { background:#d4edda; color:#155724; }
+    .badge-in_production { background:#cce5ff; color:#004085; }
+    .badge-completed { background:#d1ecf1; color:#0c5460; }
+    .badge-cancelled { background:#f8d7da; color:#721c24; }
+
+    .btn-action {
+      padding:5px 12px; border:none; border-radius:6px; font-size:11px;
+      font-weight:600; cursor:pointer; margin:1px; font-family:inherit;
+      transition:all .15s;
+    }
+    .btn-action:hover { transform:translateY(-1px); }
+    .btn-approve { background:#28a745; color:#fff; }
+    .btn-approve:hover { background:#218838; }
+    .btn-cancel { background:#dc3545; color:#fff; }
+    .btn-cancel:hover { background:#c82333; }
+
+    .toast {
+      position:fixed; top:20px; right:20px; padding:14px 22px; border-radius:8px;
+      font-size:14px; font-weight:500; z-index:2000; display:none;
+      box-shadow:0 4px 15px rgba(0,0,0,0.15); animation:slideIn .3s;
+    }
+    .toast-success { background:#d4edda; color:#155724; border:1px solid #c3e6cb; display:block; }
+    .toast-error { background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; display:block; }
+    @keyframes slideIn { from { transform:translateX(100px); opacity:0; } to { transform:translateX(0); opacity:1; } }
+
+    .empty-state { text-align:center; padding:60px 20px; color:#999; }
+    .empty-state h3 { font-size:18px; color:#666; margin-bottom:6px; }
+    .empty-state p { font-size:14px; }
+
+    .footer { text-align:center; padding:20px; color:#999; font-size:13px; margin-top:20px; border-top:1px solid #e0e6ed; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🏭 <span>Fabric Production</span></h1>
+  <nav>
+    <a href="/">🏠 Trang chủ</a>
+    <a href="/place-order">📝 Đặt hàng</a>
+    <a href="/admin/orders" class="active">📋 Đơn hàng</a>
+    <a href="/admin/production">⚙️ Điều phối</a>
+    <a href="/admin/materials">🧵 Kho</a>
+    <a href="/admin/products">📦 SP</a>
+  </nav>
+</div>
+
+<div class="container">
+
+  <div class="page-header">
+    <div>
+      <h1>📋 Quản lý Đơn hàng</h1>
+      <div class="sub">Tổng số: <strong><%= orders.length %></strong> đơn hàng</div>
+    </div>
+    <a href="/place-order" class="btn">➕ Tạo đơn mới</a>
+  </div>
+
+  <div class="filters">
+    <button class="filter-btn active" onclick="filterOrders('all')">📋 Tất cả</button>
+    <button class="filter-btn" onclick="filterOrders('pending')">⏳ Pending</button>
+    <button class="filter-btn" onclick="filterOrders('approved')">✅ Approved</button>
+    <button class="filter-btn" onclick="filterOrders('in_production')">⚙️ Đang SX</button>
+    <button class="filter-btn" onclick="filterOrders('completed')">✔️ Hoàn thành</button>
+    <button class="filter-btn" onclick="filterOrders('cancelled')">❌ Đã hủy</button>
+  </div>
+
+  <div class="table-card">
+    <table>
+      <thead>
+        <tr>
+          <th>Mã ĐH</th><th>Khách hàng</th><th>SĐT</th><th>Sản phẩm</th><th>SL</th><th>Ngày giao</th><th>Trạng thái</th><th>Còn lại</th><th>Thao tác</th>
+        </tr>
+      </thead>
+      <tbody id="ordersBody">
+        <% orders.forEach(o => { 
+          const today = new Date();
+          const giao = o.ngay_giao ? new Date(o.ngay_giao) : null;
+          const conLai = giao ? Math.ceil((giao - today) / (1000*60*60*24)) : null;
+          const status = o.status || 'pending';
+        %>
+        <tr data-status="<%= status %>">
+          <td><strong><%= o.ma_dh %></strong></td>
+          <td><%= o.ten_kh %></td>
+          <td style="font-size:12px"><%= o.sdt || '—' %></td>
+          <td><%= o.product ? o.product.ten_sp : o.ma_sp %></td>
+          <td style="font-weight:600"><%= Number(o.so_luong).toLocaleString() %></td>
+          <td style="font-size:12px"><%= o.ngay_giao || '—' %></td>
+          <td><span class="badge badge-<%= status %>"><%= status %></span></td>
+          <td style="font-size:12px;font-weight:600;color:<%= conLai !== null && conLai < 7 ? '#dc3545' : '#28a745' %>">
+            <%= conLai !== null ? conLai + ' ngày' : '—' %>
+          </td>
+          <td>
+            <% if (status === 'pending') { %>
+              <button class="btn-action btn-approve" onclick="updateOrder('<%= o.ma_dh %>','approved')">✅ Duyệt</button>
+              <button class="btn-action btn-cancel" onclick="updateOrder('<%= o.ma_dh %>','cancelled')">❌ Hủy</button>
+            <% } else if (status === 'approved' || status === 'in_production') { %>
+              <button class="btn-action btn-cancel" onclick="updateOrder('<%= o.ma_dh %>','cancelled')">❌ Hủy</button>
+            <% } else if (status === 'cancelled') { %>
+              <button class="btn-action btn-approve" onclick="updateOrder('<%= o.ma_dh %>','approved')">↩ Phục hồi</button>
+            <% } else if (status === 'completed') { %>
+              <span style="color:#28a745;font-size:12px">✔️ Đã bàn giao</span>
+            <% } %>
+          </td>
+        </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<div class="footer">© 2026 Fabric Production Management System</div>
+<div id="toast" class="toast"></div>
+
+<script>
+  function filterOrders(status) {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+    
+    const rows = document.querySelectorAll('#ordersBody tr');
+    rows.forEach(row => {
+      if (status === 'all' || row.dataset.status === status) {
+        row.style.display = '';
+      } else {
+        row.style.display = 'none';
+      }
+    });
+  }
+
+  async function updateOrder(ma_dh, newStatus) {
+    const label = {approved:'✅ Duyệt đơn', cancelled:'❌ Hủy đơn', pending:'↩ Phục hồi'};
+    const msg = `${label[newStatus] || 'Cập nhật'} <strong>${ma_dh}</strong>?`;
+    
+    if (!confirm(msg.replace(/<[^>]*>/g, ''))) return;
+    
+    try {
+      const res = await fetch('/api/orders/' + ma_dh + '/status', {
+        method: 'PUT',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ status: newStatus })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        showToast(`✅ ${ma_dh} → ${newStatus}`, 'success');
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        showToast('❌ ' + (data.msg || 'Lỗi'), 'error');
+      }
+    } catch(e) {
+      showToast('❌ Lỗi kết nối', 'error');
+    }
+  }
+
+  function showToast(msg, type) {
+    const t = document.getElementById('toast');
+    t.className = 'toast toast-' + type;
+    t.innerHTML = msg;
+    setTimeout(() => { t.style.display = 'none'; location.reload(); }, 1200);
+  }
+</script>
+</body>
+</html>

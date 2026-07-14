@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',Arial,sans-serif; background:#f0f4f8; min-height:100vh; }
+    .header {
+      background:linear-gradient(135deg,#1F3864 0%,#2E75B6 100%); padding:16px 40px;
+      display:flex; justify-content:space-between; align-items:center;
+      box-shadow:0 4px 20px rgba(31,56,100,0.3);
+    }
+    .header h1 { color:#fff; font-size:20px; font-weight:700; }
+    .header h1 span { font-weight:400; opacity:0.8; }
+    .header nav a {
+      color:#fff; text-decoration:none; margin-left:16px; font-size:13px;
+      font-weight:500; padding:7px 14px; border-radius:6px; transition:background .2s;
+    }
+    .header nav a:hover { background:rgba(255,255,255,0.15); }
+    .header nav a.active { background:rgba(255,255,255,0.2); }
+    .container { max-width:1300px; margin:0 auto; padding:25px 20px; }
+    .page-header {
+      display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; flex-wrap:wrap; gap:12px;
+    }
+    .page-header h1 { font-size:24px; font-weight:700; color:#1F3864; }
+    .page-header .sub { font-size:13px; color:#888; }
+    .btn {
+      padding:10px 22px; border:none; border-radius:8px; font-size:14px; font-weight:600;
+      cursor:pointer; font-family:inherit; transition:all .2s; text-decoration:none; display:inline-flex; align-items:center; gap:6px;
+    }
+    .btn-primary { background:linear-gradient(135deg,#1F3864,#2E75B6); color:#fff; }
+    .btn-primary:hover { transform:translateY(-1px); box-shadow:0 4px 12px rgba(31,56,100,0.3); }
+    .btn-sm { padding:6px 14px; font-size:12px; }
+    .btn-edit { background:#ffc107; color:#333; }
+    .btn-edit:hover { background:#e0a800; }
+    .btn-del { background:#dc3545; color:#fff; }
+    .btn-del:hover { background:#c82333; }
+    .btn-info { background:#17a2b8; color:#fff; }
+    .btn-info:hover { background:#138496; }
+    .btn-outline { background:transparent; border:2px solid #1F3864; color:#1F3864; }
+    .btn-outline:hover { background:#1F3864; color:#fff; }
+    .table-card { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.06); overflow:hidden; }
+    table { width:100%; border-collapse:collapse; }
+    thead th {
+      text-align:left; padding:12px 14px; font-size:11px; font-weight:600;
+      color:#888; text-transform:uppercase; letter-spacing:0.5px;
+      background:#f8faff; border-bottom:2px solid #e8edf5;
+    }
+    tbody td { padding:12px 14px; font-size:13px; color:#333; border-bottom:1px solid #f0f2f5; }
+    tbody tr:hover td { background:#f8faff; }
+    .modal-overlay {
+      position:fixed; top:0; left:0; width:100%; height:100%;
+      background:rgba(0,0,0,0.5); display:none; align-items:center; justify-content:center; z-index:1000;
+    }
+    .modal-overlay.active { display:flex; }
+    .modal {
+      background:#fff; border-radius:12px; padding:28px 32px; max-width:560px; width:90%;
+      box-shadow:0 10px 40px rgba(0,0,0,0.2); max-height:90vh; overflow-y:auto;
+    }
+    .modal h3 { font-size:18px; color:#1F3864; margin-bottom:16px; }
+    .form-group { margin-bottom:14px; }
+    .form-group label { display:block; font-size:12px; font-weight:600; color:#555; margin-bottom:4px; }
+    .form-group input, .form-group select, .form-group textarea {
+      width:100%; padding:9px 12px; border:2px solid #e0e6ed; border-radius:6px;
+      font-size:13px; font-family:inherit; transition:border-color .2s;
+    }
+    .form-group input:focus, .form-group select:focus { outline:none; border-color:#2E75B6; }
+    .form-row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .modal .btn-row { display:flex; gap:10px; justify-content:flex-end; margin-top:18px; }
+    .bom-list { margin-top:8px; background:#f8faff; border-radius:8px; padding:10px 14px; }
+    .bom-item { display:flex; justify-content:space-between; font-size:12px; padding:4px 0; border-bottom:1px solid #e8edf5; }
+    .bom-item:last-child { border-bottom:none; }
+    .toast {
+      position:fixed; top:20px; right:20px; padding:14px 22px; border-radius:8px;
+      font-size:14px; font-weight:500; z-index:2000; display:none;
+      box-shadow:0 4px 15px rgba(0,0,0,0.15); animation:slideIn .3s;
+    }
+    .toast-success { background:#d4edda; color:#155724; border:1px solid #c3e6cb; display:block; }
+    .toast-error { background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; display:block; }
+    @keyframes slideIn { from { transform:translateX(100px); opacity:0; } to { transform:translateX(0); opacity:1; } }
+    .footer { text-align:center; padding:20px; color:#999; font-size:13px; margin-top:20px; border-top:1px solid #e0e6ed; }
+  </style>
+</head>
+<body>
+<div class="header">
+  <h1>🏭 <span>Fabric Production</span></h1>
+  <nav>
+    <a href="/">🏠 Trang chủ</a>
+    <a href="/place-order">📝 Đặt hàng</a>
+    <a href="/admin/orders">📋 Đơn hàng</a>
+    <a href="/admin/production">⚙️ Điều phối</a>
+    <a href="/admin/materials">🧵 Kho</a>
+    <a href="/admin/products" class="active">📦 SP</a>
+  </nav>
+</div>
+<div class="container">
+  <div class="page-header">
+    <div><h1>📦 Quản lý Sản phẩm & BOM</h1><div class="sub">Tổng số: <strong><%= products.length %></strong> sản phẩm</div></div>
+    <button class="btn btn-primary" onclick="openProdModal(null)">➕ Thêm SP</button>
+  </div>
+  <div class="table-card">
+    <table>
+      <thead><tr><th>Mã SP</th><th>Tên SP</th><th>Giá</th><th>Tồn kho</th><th>BOM (NL)</th><th>Thao tác</th></tr></thead>
+      <tbody>
+        <% products.forEach(p => { %>
+        <tr id="prod-<%= p.ma_sp %>">
+          <td><strong><%= p.ma_sp %></strong></td>
+          <td><%= p.ten_sp %></td>
+          <td><%= p.price ? Number(p.price).toLocaleString()+'đ' : '—' %></td>
+          <td><%= p.stock || 0 %></td>
+          <td>
+            <% if (p.boms && p.boms.length) { %>
+              <div class="bom-list">
+                <% p.boms.forEach(b => { %>
+                  <div class="bom-item"><span><%= b.ma_nl %></span><span><%= b.dinh_muc %> <%= b.don_vi %></span></div>
+                <% }) %>
+              </div>
+            <% } else { %>
+              <span style="color:#999">Chưa có BOM</span>
+            <% } %>
+          </td>
+          <td>
+            <button class="btn btn-edit btn-sm" onclick='openProdModal(<%= JSON.stringify(p) %>)'>✏️</button>
+            <button class="btn btn-info btn-sm" onclick="openBOMModal('<%= p.ma_sp %>')">📋 BOM</button>
+            <button class="btn btn-del btn-sm" onclick="delProd('<%= p.ma_sp %>')">🗑</button>
+          </td>
+        </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</div>
+<div class="footer">© 2026 Fabric Production Management System</div>
+<div id="toast" class="toast"></div>
+
+<!-- Product Modal -->
+<div id="prodModal" class="modal-overlay">
+  <div class="modal">
+    <h3 id="prodModalTitle">➕ Thêm sản phẩm</h3>
+    <form id="prodForm" onsubmit="return saveProd(event)">
+      <input type="hidden" id="prodEditMode" value="0">
+      <div class="form-row">
+        <div class="form-group"><label>Mã SP *</label><input type="text" id="f_ma_sp" required placeholder="VD: MS-004"></div>
+        <div class="form-group"><label>Tên SP *</label><input type="text" id="f_ten_sp" required placeholder="VD: Áo khoác"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Giá</label><input type="number" id="f_price" min="0" step="1000"></div>
+        <div class="form-group"><label>Tồn kho</label><input type="number" id="f_stock" min="0" value="0"></div>
+      </div>
+      <div class="form-group"><label>Mô tả</label><textarea id="f_desc" rows="2" placeholder="Mô tả sản phẩm..."></textarea></div>
+      <div class="btn-row">
+        <button type="button" class="btn btn-outline" onclick="closeProdModal()">Hủy</button>
+        <button type="submit" class="btn btn-primary">💾 Lưu</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- BOM Modal -->
+<div id="bomModal" class="modal-overlay">
+  <div class="modal">
+    <h3>📋 BOM <span id="bomSpLabel"></span></h3>
+    <div id="bomList"></div>
+    <div style="margin-top:14px;padding-top:14px;border-top:2px solid #e8edf5">
+      <div class="form-row">
+        <div class="form-group"><label>Nguyên liệu</label><select id="bomNl"></select></div>
+        <div class="form-group"><label>Định mức</label><input type="number" id="bomDinhMuc" step="0.01" min="0.01" placeholder="VD: 1.5"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Đơn vị</label><input type="text" id="bomDonVi" placeholder="VD: m"></div>
+        <div class="form-group"><label>&nbsp;</label><button class="btn btn-green" onclick="addBOM()" style="width:100%">➕ Thêm BOM</button></div>
+      </div>
+    </div>
+    <div class="btn-row"><button type="button" class="btn btn-outline" onclick="closeBOMModal()">Đóng</button></div>
+  </div>
+</div>
+
+<script>
+  let currentBomSp = '';
+
+  // Product CRUD
+  function openProdModal(d) {
+    document.getElementById('prodModal').classList.add('active');
+    if (d) {
+      document.getElementById('prodModalTitle').textContent = '✏️ Sửa sản phẩm';
+      document.getElementById('prodEditMode').value = '1';
+      document.getElementById('f_ma_sp').value = d.ma_sp; document.getElementById('f_ma_sp').readOnly = true;
+      document.getElementById('f_ten_sp').value = d.ten_sp;
+      document.getElementById('f_price').value = d.price||'';
+      document.getElementById('f_stock').value = d.stock||0;
+      document.getElementById('f_desc').value = d.description||'';
+    } else {
+      document.getElementById('prodModalTitle').textContent = '➕ Thêm sản phẩm';
+      document.getElementById('prodEditMode').value = '0'; document.getElementById('f_ma_sp').readOnly = false;
+      document.getElementById('prodForm').reset();
+    }
+  }
+  function closeProdModal() { document.getElementById('prodModal').classList.remove('active'); }
+  async function saveProd(e) {
+    e.preventDefault(); const isEdit = document.getElementById('prodEditMode').value==='1';
+    const d = { ma_sp: document.getElementById('f_ma_sp').value.trim(), ten_sp: document.getElementById('f_ten_sp').value.trim(), price: parseFloat(document.getElementById('f_price').value)||null, stock: parseInt(document.getElementById('f_stock').value)||0, description: document.getElementById('f_desc').value.trim()||null };
+    try {
+      const res = isEdit ? await fetch('/api/products/'+d.ma_sp,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)}) : await fetch('/api/products',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});
+      const r = await res.json();
+      if (res.ok) { toast(isEdit?'✅ Đã cập nhật!':'✅ Đã thêm!','success'); closeProdModal(); setTimeout(()=>location.reload(),800); }
+      else { toast('❌ '+(r.msg||'Lỗi'),'error'); }
+    } catch(e) { toast('❌ Lỗi kết nối','error'); }
+  }
+  async function delProd(ma_sp) {
+    if (!confirm(`Xóa SP ${ma_sp}?`)) return;
+    try {
+      const res = await fetch('/api/products/'+ma_sp,{method:'DELETE'});
+      if (res.ok) { toast('✅ Đã xóa','success'); document.getElementById('prod-'+ma_sp)?.remove(); }
+      else { const r=await res.json(); toast('❌ '+(r.msg||'Lỗi'),'error'); }
+    } catch(e) { toast('❌ Lỗi kết nối','error'); }
+  }
+
+  // BOM Management
+  async function openBOMModal(ma_sp) {
+    currentBomSp = ma_sp;
+    document.getElementById('bomSpLabel').textContent = '– ' + ma_sp;
+    document.getElementById('bomModal').classList.add('active');
+    
+    // Load materials for dropdown
+    const matRes = await fetch('/api/materials');
+    const mats = await matRes.json();
+    const sel = document.getElementById('bomNl');
+    sel.innerHTML = mats.map(m => `<option value="${m.ma_nl}">[${m.ma_nl}] ${m.ten_nl}</option>`).join('');
+
+    // Load existing BOM
+    loadBOM(ma_sp);
+  }
+  function closeBOMModal() { document.getElementById('bomModal').classList.remove('active'); }
+
+  async function loadBOM(ma_sp) {
+    const res = await fetch('/api/products/'+ma_sp+'/bom');
+    const items = await res.json();
+    const container = document.getElementById('bomList');
+    if (!items.length) {
+      container.innerHTML = '<div style="text-align:center;padding:20px;color:#999">Chưa có nguyên liệu trong BOM</div>';
+      return;
+    }
+    container.innerHTML = '<table style="width:100%;font-size:13px"><tr><th style="text-align:left;padding:6px">Nguyên liệu</th><th style="text-align:left;padding:6px">Định mức</th><th style="text-align:left;padding:6px">Đơn vị</th><th></th></tr>' +
+      items.map(b => `<tr><td style="padding:6px">${b.ma_nl}</td><td style="padding:6px">${b.dinh_muc}</td><td style="padding:6px">${b.don_vi||''}</td><td style="padding:6px"><button class="btn btn-del btn-sm" onclick="delBOM('${b.ma_nl}')">🗑</button></td></tr>`).join('') +
+      '</table>';
+  }
+
+  async function addBOM() {
+    const ma_nl = document.getElementById('bomNl').value;
+    const dinh_muc = parseFloat(document.getElementById('bomDinhMuc').value);
+    const don_vi = document.getElementById('bomDonVi').value.trim();
+    if (!dinh_muc || dinh_muc <= 0) return toast('Nhập định mức!','error');
+
+    try {
+      const res = await fetch('/api/products/'+currentBomSp+'/bom', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ ma_sp: currentBomSp, ma_nl, dinh_muc, don_vi })
+      });
+      if (res.ok) {
+        toast('✅ Đã thêm BOM','success');
+        document.getElementById('bomDinhMuc').value = '';
+        document.getElementById('bomDonVi').value = '';
+        loadBOM(currentBomSp);
+      } else {
+        const r = await res.json();
+        toast('❌ '+(r.msg||'Lỗi'),'error');
+      }
+    } catch(e) { toast('❌ Lỗi kết nối','error'); }
+  }
+
+  async function delBOM(ma_nl) {
+    if (!confirm(`Xóa nguyên liệu ${ma_nl} khỏi BOM?`)) return;
+    try {
+      const res = await fetch('/api/products/'+currentBomSp+'/bom/'+ma_nl, { method:'DELETE' });
+      if (res.ok) { toast('✅ Đã xóa','success'); loadBOM(currentBomSp); }
+      else { toast('❌ Lỗi','error'); }
+    } catch(e) { toast('❌ Lỗi kết nối','error'); }
+  }
+
+  function toast(msg,type){const t=document.getElementById('toast');t.className='toast toast-'+type;t.innerHTML=msg;setTimeout(()=>{t.style.display='none';},3000);}
+</script>
+</body>
+</html>

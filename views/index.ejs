@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %></title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Inter',Arial,sans-serif; background:#f0f4f8; min-height:100vh; }
+    
+    .header {
+      background:linear-gradient(135deg,#1F3864 0%,#2E75B6 100%);
+      padding:16px 40px; display:flex; justify-content:space-between; align-items:center;
+      box-shadow:0 4px 20px rgba(31,56,100,0.3);
+    }
+    .header h1 { color:#fff; font-size:20px; font-weight:700; }
+    .header h1 span { font-weight:400; opacity:0.8; }
+    .header nav a {
+      color:#fff; text-decoration:none; margin-left:16px; font-size:13px;
+      font-weight:500; padding:7px 14px; border-radius:6px; transition:background .2s;
+    }
+    .header nav a:hover { background:rgba(255,255,255,0.15); }
+    .header nav a.active { background:rgba(255,255,255,0.2); }
+
+    .hero {
+      background:linear-gradient(135deg,#1F3864,#2E75B6);
+      padding:50px 40px 60px; text-align:center; position:relative;
+    }
+    .hero::after {
+      content:''; position:absolute; bottom:0; left:0; right:0;
+      height:40px; background:#f0f4f8; border-radius:40px 40px 0 0;
+    }
+    .hero h2 { color:#fff; font-size:36px; font-weight:800; margin-bottom:10px; }
+    .hero p { color:rgba(255,255,255,0.8); font-size:16px; max-width:600px; margin:0 auto; line-height:1.6; }
+    .hero .stats-row {
+      display:flex; justify-content:center; gap:40px; margin-top:30px; flex-wrap:wrap;
+    }
+    .hero .stat {
+      background:rgba(255,255,255,0.12); backdrop-filter:blur(10px);
+      padding:18px 30px; border-radius:12px; min-width:120px;
+    }
+    .hero .stat .num { color:#fff; font-size:28px; font-weight:800; }
+    .hero .stat .lbl { color:rgba(255,255,255,0.75); font-size:12px; margin-top:4px; }
+
+    .container { max-width:1200px; margin:-10px auto 0; padding:0 20px 40px; position:relative; z-index:1; }
+
+    /* Flow diagram */
+    .flow-section { margin-bottom:35px; }
+    .flow-section h3 { font-size:18px; color:#1F3864; margin-bottom:18px; text-align:center; }
+    .flow {
+      display:flex; align-items:center; justify-content:center; gap:0; flex-wrap:wrap;
+    }
+    .flow-step {
+      background:#fff; border:2px solid #e0e6ed; border-radius:12px;
+      padding:16px 20px; text-align:center; min-width:150px; flex:1;
+      transition:all .2s; cursor:default; position:relative;
+    }
+    .flow-step:hover { border-color:#2E75B6; transform:translateY(-3px);box-shadow:0 6px 20px rgba(46,117,182,0.15);}
+    .flow-step .icon { font-size:28px; margin-bottom:6px; }
+    .flow-step .name { font-size:13px; font-weight:600; color:#1F3864; }
+    .flow-step .desc { font-size:11px; color:#888; margin-top:3px; }
+    .flow-step .tag {
+      display:inline-block; margin-top:6px; padding:2px 8px; border-radius:10px;
+      font-size:9px; font-weight:600; background:#e8f0fe; color:#2E75B6;
+    }
+    .flow-arrow {
+      font-size:20px; color:#2E75B6; padding:0 4px; flex-shrink:0; font-weight:700;
+    }
+    .flow-arrow-back {
+      font-size:14px; color:#E6192E; padding:0 4px; flex-shrink:0;
+    }
+
+    /* Action cards */
+    .actions { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:16px; margin-bottom:35px; }
+    .action-card {
+      background:#fff; border-radius:12px; padding:22px 24px;
+      box-shadow:0 2px 12px rgba(0,0,0,0.06); text-decoration:none;
+      display:flex; align-items:center; gap:16px; transition:all .2s;
+    }
+    .action-card:hover { transform:translateY(-2px); box-shadow:0 6px 20px rgba(0,0,0,0.1); }
+    .action-card .ac-icon {
+      width:48px; height:48px; border-radius:12px; display:flex;
+      align-items:center; justify-content:center; font-size:22px; flex-shrink:0;
+    }
+    .action-card .ac-text h4 { font-size:14px; color:#1F3864; margin-bottom:3px; }
+    .action-card .ac-text p { font-size:12px; color:#888; }
+    .ac-blue .ac-icon { background:#e8f0fe; }
+    .ac-green .ac-icon { background:#d4edda; }
+    .ac-gold .ac-icon { background:#fff3cd; }
+    .ac-purple .ac-icon { background:#e8d4f0; }
+    .ac-red .ac-icon { background:#f8d7da; }
+
+    /* Quick info */
+    .info-grid { display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:30px; }
+    @media(max-width:768px){.info-grid{grid-template-columns:1fr;}}
+    .info-card {
+      background:#fff; border-radius:12px; padding:20px 24px;
+      box-shadow:0 2px 12px rgba(0,0,0,0.06);
+    }
+    .info-card h4 { font-size:15px; color:#1F3864; margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+    .info-card table { width:100%; border-collapse:collapse; font-size:13px; }
+    .info-card td { padding:6px 4px; border-bottom:1px solid #f0f2f5; color:#555; }
+    .info-card td:last-child { text-align:right; font-weight:500; color:#333; }
+    .status-dot {
+      display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:4px;
+    }
+    .sd-running { background:#28a745; }
+    .sd-idle { background:#6c757d; }
+    .sd-stopped { background:#dc3545; }
+
+    .footer { text-align:center; padding:20px; color:#999; font-size:13px; border-top:1px solid #e0e6ed; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🏭 <span>Fabric Production</span></h1>
+  <nav>
+    <a href="/" class="active">🏠 Trang chủ</a>
+    <a href="/place-order">📝 Đặt hàng</a>
+    <a href="/admin/orders">📋 Đơn hàng</a>
+    <a href="/admin/production">⚙️ Điều phối</a>
+    <a href="/admin/materials">🧵 Kho</a>
+    <a href="/admin/products">📦 SP</a>
+  </nav>
+</div>
+
+<div class="hero">
+  <h2>🚀 Hệ thống Quản lý Sản xuất May mặc</h2>
+  <p>Giải pháp toàn diện cho quy trình sản xuất — từ đặt hàng, lập kế hoạch, điều phối dây chuyền đến giám sát chất lượng</p>
+  <div class="stats-row">
+    <div class="stat"><div class="num" id="statProducts">—</div><div class="lbl">Sản phẩm</div></div>
+    <div class="stat"><div class="num" id="statOrders">—</div><div class="lbl">Đơn hàng</div></div>
+    <div class="stat"><div class="num" id="statMaterials">—</div><div class="lbl">Nguyên liệu</div></div>
+    <div class="stat"><div class="num" id="statLines">—</div><div class="lbl">Dây chuyền</div></div>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- Flow -->
+  <div class="flow-section">
+    <h3>🔄 Quy trình vận hành</h3>
+    <div class="flow">
+      <div class="flow-step"><div class="icon">📝</div><div class="name">Đặt hàng</div><div class="desc">Khách đặt hàng</div><div class="tag">place-order</div></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><div class="icon">📋</div><div class="name">Tiếp nhận</div><div class="desc">Quản lý đơn hàng</div><div class="tag">pending</div></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><div class="icon">⚙️</div><div class="name">Điều phối</div><div class="desc">Gán vào pipeline</div><div class="tag">in_production</div></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><div class="icon">🏗️</div><div class="name">Sản xuất</div><div class="desc">Dây chuyền chạy</div><div class="tag">RUNNING</div></div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step"><div class="icon">✅</div><div class="name">Hoàn thành</div><div class="desc">Bàn giao</div><div class="tag">completed</div></div>
+      <div class="flow-arrow-back">↩</div>
+      <div class="flow-step" style="border-color:#f5c6cb;"><div class="icon">📊</div><div class="name" style="color:#E6192E;">Giám sát</div><div class="desc">Cải tiến liên tục</div><div class="tag" style="background:#f8d7da;color:#721c24;">feedback</div></div>
+    </div>
+  </div>
+
+  <!-- Actions -->
+  <h3 style="font-size:16px;color:#1F3864;margin-bottom:12px;">⚡ Truy cập nhanh</h3>
+  <div class="actions">
+    <a href="/place-order" class="action-card ac-green">
+      <div class="ac-icon">📝</div>
+      <div class="ac-text"><h4>Đặt hàng mới</h4><p>Khách hàng đặt sản xuất</p></div>
+    </a>
+    <a href="/admin/orders" class="action-card ac-blue">
+      <div class="ac-icon">📋</div>
+      <div class="ac-text"><h4>Quản lý đơn hàng</h4><p>Theo dõi & xử lý đơn</p></div>
+    </a>
+    <a href="/admin/production" class="action-card ac-gold">
+      <div class="ac-icon">⚙️</div>
+      <div class="ac-text"><h4>Điều phối SX</h4><p>Gán đơn vào dây chuyền</p></div>
+    </a>
+    <a href="/admin/products" class="action-card ac-purple">
+      <div class="ac-icon">📦</div>
+      <div class="ac-text"><h4>Sản phẩm & BOM</h4><p>Quản lý mã hàng, định mức</p></div>
+    </a>
+    <a href="/admin/materials" class="action-card ac-red">
+      <div class="ac-icon">🧵</div>
+      <div class="ac-text"><h4>Kho nguyên liệu</h4><p>Kiểm tra tồn kho NPL</p></div>
+    </a>
+  </div>
+
+  <!-- Info -->
+  <div class="info-grid">
+    <div class="info-card">
+      <h4>🏗️ Dây chuyền</h4>
+      <table id="pipelineTable"><tr><td colspan="2" style="text-align:center;color:#999">Đang tải...</td></tr></table>
+    </div>
+    <div class="info-card">
+      <h4>📋 Đơn hàng gần đây</h4>
+      <table id="recentOrdersTable"><tr><td colspan="2" style="text-align:center;color:#999">Đang tải...</td></tr></table>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">© 2026 Fabric Production Management System</div>
+
+<script>
+  async function loadStats() {
+    try {
+      const [p, o, m, l] = await Promise.all([
+        fetch('/api/products/api').then(r=>r.json()),
+        fetch('/api/orders').then(r=>r.json()),
+        fetch('/api/materials').then(r=>r.json()),
+        fetch('/api/production-lines').then(r=>r.json()),
+      ]);
+      document.getElementById('statProducts').textContent = p.length;
+      document.getElementById('statOrders').textContent = o.length;
+      document.getElementById('statMaterials').textContent = m.length;
+      document.getElementById('statLines').textContent = l.length;
+
+      // Pipeline table
+      let ph = '';
+      l.forEach(pl => {
+        const cls = pl.status==='RUNNING'?'sd-running':pl.status==='STOPPED'?'sd-stopped':'sd-idle';
+        const prod = pl.product ? pl.product.ten_sp : '—';
+        ph += `<tr><td><span class="status-dot ${cls}"></span>${pl.ten_pipe}</td><td>${pl.status} · ${prod}</td></tr>`;
+      });
+      document.getElementById('pipelineTable').innerHTML = ph;
+
+      // Recent orders
+      const recent = o.slice(-5).reverse();
+      let rh = '';
+      recent.forEach(o => {
+        const badges = {pending:'#fff3cd,#856404',approved:'#d4edda,#155724',in_production:'#cce5ff,#004085',completed:'#d1ecf1,#0c5460'};
+        const [bg,fg] = (badges[o.status] || '#e9ecef,#495057').split(',');
+        rh += `<tr><td>${o.ma_dh} · ${o.ten_kh}</td><td><span style="background:${bg};color:${fg};padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">${o.status||'pending'}</span></td></tr>`;
+      });
+      document.getElementById('recentOrdersTable').innerHTML = rh;
+    } catch(e) {}
+  }
+  loadStats();
+</script>
+</body>
+</html>
