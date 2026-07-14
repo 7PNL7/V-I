@@ -51,6 +51,7 @@
     .gantt-timeline .col.today { background:#e8f4ff; }
     .gantt-job { position:absolute; top:6px; height:44px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:600; color:#fff; cursor:pointer; transition:all .2s; z-index:5; overflow:hidden; padding:0 4px; min-width:4px; box-shadow:0 1px 4px rgba(0,0,0,0.15); }
     .gantt-job:hover { transform:scaleY(1.05); box-shadow:0 3px 10px rgba(0,0,0,0.25); z-index:20; }
+    .gantt-job.dragging { opacity:0.6; transform:scale(0.98); }
     .gantt-job.running { background:linear-gradient(135deg,#90EE90,#28a745); border:1px solid #28a745; }
     .gantt-job.queued { background:linear-gradient(135deg,#74b9ff,#0984e3); border:1px solid #0984e3; }
     .gantt-job.overdue { background:linear-gradient(135deg,#ff7675,#d63031); border:1px solid #d63031; animation:pulseOverdue 1.5s infinite; }
@@ -85,8 +86,10 @@
     .sidebar-card { background:#fff; border-radius:12px; box-shadow:0 2px 12px rgba(0,0,0,0.06); margin-bottom:16px; }
     .sidebar-card h3 { font-size:14px; font-weight:600; color:#1F3864; padding:14px 16px; border-bottom:2px solid #e8edf5; }
     .sidebar-body { padding:12px 16px; max-height:400px; overflow-y:auto; }
-    .order-item { padding:10px 12px; border:2px solid #e8edf5; border-radius:8px; margin-bottom:8px; cursor:pointer; transition:all .2s; }
+    .order-item { padding:10px 12px; border:2px solid #e8edf5; border-radius:8px; margin-bottom:8px; cursor:grab; transition:all .2s; }
     .order-item:hover { border-color:#2E75B6; background:#f0f7ff; }
+    .order-item.dragging { opacity:0.6; cursor:grabbing; }
+    .gantt-cell.drag-over { background:rgba(46,117,182,0.14); outline:2px dashed #2E75B6; }
     .order-item.selected { border-color:#1F3864; background:#e8f0fe; }
     .order-item .oi-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
     .order-item .oi-code { font-weight:700; font-size:13px; color:#1F3864; }
@@ -215,9 +218,9 @@
       <div class="sidebar-card" style="margin-bottom:0;">
         <h3>ℹ️ Hướng dẫn</h3>
         <div class="sidebar-body" style="font-size:12px;color:#666;line-height:1.7;">
-          <p>1️⃣ Click chọn <strong>đơn hàng</strong> bên cạnh</p>
-          <p>2️⃣ Click vào ô <strong>trống (+)</strong> trên timeline để chọn ngày</p>
-          <p>3️⃣ Nhấn <strong>"Gán đơn"</strong> để xác nhận</p>
+          <p>1️⃣ Kéo đơn hàng <strong>chờ</strong> từ danh sách vào ô <strong>trống (+)</strong> để xếp lịch</p>
+          <p>2️⃣ Kéo đơn đã xếp trên timeline sang vị trí khác để <strong>dời lịch</strong></p>
+          <p>3️⃣ Kéo một đơn đã xếp lên một đơn khác để <strong>đổi chỗ</strong></p>
           <hr style="margin:10px 0;border:none;border-top:1px solid #e8edf5;">
             <p>🟢 Xanh = đang SX<br>🔵 Xanh dương = chờ SX<br>🔴 Đỏ = trễ hạn<br>⚪ Xám = hoàn thành</p>
         </div>
@@ -248,8 +251,16 @@
   let ganttData = null;
   let currentViewStart = null;
   let currentViewEnd = null;
+  let draggedPayload = null;
 
-  document.addEventListener('DOMContentLoaded', () => { loadData(); });
+  document.addEventListener('DOMContentLoaded', () => {
+    loadData();
+    document.addEventListener('dragstart', handleDragStart);
+    document.addEventListener('dragover', handleDragOver);
+    document.addEventListener('dragleave', handleDragLeave);
+    document.addEventListener('drop', handleDrop);
+    document.addEventListener('dragend', handleDragEnd);
+  });
 
   async function loadData() {
     try {
@@ -351,7 +362,7 @@
     const pending = allOrders.filter(o => o.status === 'pending' || o.status === 'approved');
     if (!pending.length) { container.innerHTML = '<div class="empty-state"><h3>✅ Tất cả đã xử lý</h3></div>'; return; }
     container.innerHTML = pending.map((o, idx) => `
-      <div class="order-item ${selectedOrder?.ma_dh === o.ma_dh ? 'selected' : ''}" onclick="selectOrder(${idx})">
+      <div class="order-item ${selectedOrder?.ma_dh === o.ma_dh ? 'selected' : ''}" draggable="true" data-ma-dh="${o.ma_dh}" data-kind="pending" onclick="selectOrder(${idx})">
         <div class="oi-header"><span class="oi-code">${o.ma_dh}</span><span class="badge badge-${o.status}">${o.status}</span></div>
         <div class="oi-customer">${o.ten_kh}</div>
         <div class="oi-details"><span>${o.product ? o.product.ten_sp : o.ma_sp}</span><span>${Number(o.so_luong).toLocaleString()} cái · ${o.ngay_giao || '—'}</span></div>
@@ -455,8 +466,8 @@
             
             const tooltip = `${job.ma_dh} - ${job.product||''} - ${job.customer||''}${job.is_overdue ? ' ⚠️ TRỄ HẠN!' : ''}`;
             
-            cellsHtml += `<div class="col ${isWeekend?'weekend':''} ${isToday?'today':''}" style="position:relative;">
-              <div class="gantt-job ${jobClass}" style="left:2px;width:${jobWidth}px;" title="${tooltip}" onclick="event.stopPropagation();showJobInfo('${job.ma_dh}')">
+            cellsHtml += `<div class="gantt-cell col ${isWeekend?'weekend':''} ${isToday?'today':''}" data-line="${line.ma_pipe}" data-date="${d}" data-ma-dh="${job.ma_dh}" style="position:relative;">
+              <div class="gantt-job ${jobClass}" draggable="true" data-ma-dh="${job.ma_dh}" data-kind="scheduled" style="left:2px;width:${jobWidth}px;" title="${tooltip}" onclick="event.stopPropagation();showJobInfo('${job.ma_dh}')">
                 <span class="label">${job.ma_dh}${job.is_overdue ? ' ⛔' : ''}</span>
               </div>
             </div>`;
@@ -464,7 +475,7 @@
         } else {
           // Free cell: show clickable + slot if an order is selected
           const hasOrder = selectedOrder !== null;
-          cellsHtml += `<div class="col ${isWeekend?'weekend':''} ${isToday?'today':''}" ${hasOrder ? `style="cursor:pointer;" onclick="selectSlot('${line.ma_pipe}','${d}')"` : ''}>
+          cellsHtml += `<div class="gantt-cell col ${isWeekend?'weekend':''} ${isToday?'today':''}" data-line="${line.ma_pipe}" data-date="${d}" ${hasOrder ? `style="cursor:pointer;" onclick="selectSlot('${line.ma_pipe}','${d}')"` : ''}>
             ${hasOrder ? `<div class="gantt-job free-slot" style="left:2px;width:34px;height:44px;top:6px;"><span class="label">+</span></div>` : ''}
           </div>`;
         }
@@ -509,6 +520,114 @@
       if (res.ok) { showToast('✅ '+data.msg,'success'); cancelAssign(); setTimeout(()=>location.reload(),1500); }
       else { showToast('❌ '+data.msg,'error'); btn.disabled=false; btn.textContent='✅ Gán đơn'; }
     } catch(e) { showToast('❌ Lỗi: '+e.message,'error'); btn.disabled=false; btn.textContent='✅ Gán đơn'; }
+  }
+
+  function handleDragStart(event) {
+    const item = event.target.closest('.order-item, .gantt-job');
+    if (!item) return;
+    item.classList.add('dragging');
+    draggedPayload = {
+      ma_dh: item.dataset.maDh,
+      kind: item.dataset.kind || 'scheduled'
+    };
+    event.dataTransfer?.setData('text/plain', item.dataset.maDh || '');
+    event.dataTransfer.effectAllowed = 'move';
+  }
+
+  function handleDragOver(event) {
+    const cell = event.target.closest('.gantt-cell');
+    if (!cell || !draggedPayload) return;
+    event.preventDefault();
+    cell.classList.add('drag-over');
+    event.dataTransfer.dropEffect = 'move';
+  }
+
+  function handleDragLeave(event) {
+    const cell = event.target.closest('.gantt-cell');
+    if (cell) cell.classList.remove('drag-over');
+  }
+
+  async function handleDrop(event) {
+    const cell = event.target.closest('.gantt-cell');
+    if (!cell || !draggedPayload) return;
+    event.preventDefault();
+    cell.classList.remove('drag-over');
+
+    const ma_pipe = cell.dataset.line;
+    const start_date = cell.dataset.date;
+    const targetMaDh = cell.dataset.maDh || null;
+
+    if (!ma_pipe || !start_date) return;
+
+    if (draggedPayload.kind === 'pending') {
+      if (targetMaDh) {
+        showToast('📌 Kéo đơn chờ vào ô trống để xếp lịch. Để đổi chỗ, kéo đơn đã xếp lịch trên timeline.', 'error');
+        return;
+      }
+      await assignDraggedOrder(ma_pipe, start_date);
+    } else {
+      if (targetMaDh && targetMaDh !== draggedPayload.ma_dh) {
+        await swapSchedule(draggedPayload.ma_dh, targetMaDh);
+      } else {
+        await moveScheduledOrder(draggedPayload.ma_dh, ma_pipe, start_date);
+      }
+    }
+
+    draggedPayload = null;
+  }
+
+  function handleDragEnd(event) {
+    document.querySelectorAll('.dragging, .drag-over').forEach(el => el.classList.remove('dragging', 'drag-over'));
+    draggedPayload = null;
+  }
+
+  async function assignDraggedOrder(ma_pipe, start_date) {
+    if (!selectedOrder || selectedOrder.ma_dh !== draggedPayload?.ma_dh) return;
+    try {
+      const res = await fetch('/api/schedule/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ma_dh: draggedPayload.ma_dh, ma_pipe, start_date })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.msg || 'Không thể xếp lịch');
+      showToast(`✅ ${data.msg}`, 'success');
+      setTimeout(() => location.reload(), 1200);
+    } catch (e) {
+      showToast(`❌ ${e.message}`, 'error');
+    }
+  }
+
+  async function moveScheduledOrder(ma_dh, ma_pipe, start_date) {
+    try {
+      const res = await fetch('/api/schedule/move', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ma_dh, ma_pipe, start_date })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.msg || 'Không thể dời lịch');
+      showToast(`✅ ${data.msg}`, 'success');
+      setTimeout(() => location.reload(), 1200);
+    } catch (e) {
+      showToast(`❌ ${e.message}`, 'error');
+    }
+  }
+
+  async function swapSchedule(ma_dh_a, ma_dh_b) {
+    try {
+      const res = await fetch('/api/schedule/swap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ma_dh_a, ma_dh_b })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.msg || 'Không thể đổi chỗ');
+      showToast(`✅ ${data.msg}`, 'success');
+      setTimeout(() => location.reload(), 1200);
+    } catch (e) {
+      showToast(`❌ ${e.message}`, 'error');
+    }
   }
 
   function showJobInfo(ma_dh) {

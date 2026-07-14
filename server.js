@@ -741,7 +741,6 @@ app.post('/api/schedule/split-suggestion', async (req, res) => {
 app.post('/api/schedule/split-assign', async (req, res) => {
   try {
     const { ma_dh, splits } = req.body;
-    // splits: [{ ma_pipe: 'DC-A', quantity: 30000, start_date: '2026-07-15' }, ...]
     const { Order, ProductionLine, Schedule } = require('./models');
 
     const toLocalDate = (date) => {
@@ -767,7 +766,6 @@ app.post('/api/schedule/split-assign', async (req, res) => {
       const prodDays = Math.ceil(quantity / 500) || 1;
       let actualStart = start_date || toLocalDate(new Date());
 
-      // Check if we need to queue after existing orders
       const lineSchedules = await Schedule.findAll({ 
         where: { ma_pipe }, 
         order: [['position', 'DESC']],
@@ -779,7 +777,6 @@ app.post('/api/schedule/split-assign', async (req, res) => {
           const dt = new Date(lastEnd + 'T00:00:00');
           dt.setDate(dt.getDate() + 1);
           const queuedStart = toLocalDate(dt);
-          // Use the later of the two dates
           if (queuedStart > actualStart) actualStart = queuedStart;
         }
       }
@@ -796,44 +793,103 @@ app.post('/api/schedule/split-assign', async (req, res) => {
       const schStatus = isOverdue ? 'overdue' : 'queued';
 
       await Schedule.create({
-        ma_pipe,
-        ma_dh,
-        ma_sp: order.ma_sp,
-        so_luong: quantity,
-        start_date: actualStart,
-        end_date: actualEnd,
-        delivery_date: deliveryDate,
-        status: schStatus,
-        position: nextPos
+        ma_pipe, ma_dh, ma_sp: order.ma_sp, so_luong: quantity,
+        start_date: actualStart, end_date: actualEnd,
+        delivery_date: deliveryDate, status: schStatus, position: nextPos
       });
 
       if (nextPos === 1) {
-        await line.update({
-          ma_sp_dang_lam: order.ma_sp,
-          ma_dh_dang_lam: ma_dh,
-          status: 'IDLE'
-        });
+        await line.update({ ma_sp_dang_lam: order.ma_sp, ma_dh_dang_lam: ma_dh, status: 'IDLE' });
       }
 
-      results.push({
-        ma_pipe: line.ten_pipe,
-        quantity,
-        start_date: actualStart,
-        end_date: actualEnd,
-        position: nextPos,
-        is_overdue: isOverdue
-      });
+      results.push({ ma_pipe: line.ten_pipe, quantity, start_date: actualStart, end_date: actualEnd, position: nextPos, is_overdue: isOverdue });
     }
 
     await order.update({ status: 'in_production' });
-
-    res.json({
-      msg: `✅ Đã phân chia ${ma_dh} thành ${results.length} phần trên các dây chuyền!`,
-      results
-    });
+    res.json({ msg: `✅ Đã phân chia ${ma_dh} thành ${results.length} phần trên các dây chuyền!`, results });
   } catch (e) {
     console.error('Error in split-assign:', e);
     res.status(500).json({ msg: 'Lỗi khi phân chia: ' + e.message });
+  }
+});
+
+// Move order to a different line
+app.post('/api/schedule/move', async (req, res) => {
+  try {
+    const { ma_dh, ma_pipe, start_date } = req.body;
+    const { Order, Schedule } = require('./models');
+
+    const toLocalDate = (date) => {
+      if (!date) return null;
+      const d = new Date(date);
+      return d.getFullYear() + '-' + 
+        String(d.getMonth() + 1).padStart(2, '0') + '-' + 
+        String(d.getDate()).padStart(2, '0');
+    };
+
+    const order = await Order.findOne({ where: { ma_dh } });
+    const schedule = await Schedule.findOne({ where: { ma_dh } });
+
+    if (!order || !schedule) {
+      return res.status(404).json({ msg: 'Không tìm thấy đơn hoặc lịch trình' });
+    }
+
+    const prodDays = Math.ceil(order.so_luong / 500) || 1;
+    const actualStart = start_date || schedule.start_date;
+    const endDt = new Date(actualStart + 'T00:00:00');
+    endDt.setDate(endDt.getDate() + prodDays - 1);
+    const actualEnd = toLocalDate(endDt);
+    const deliveryDate = order.ngay_giao ? toLocalDate(order.ngay_giao) : null;
+    const isOverdue = deliveryDate && actualEnd > deliveryDate;
+    const schStatus = isOverdue ? 'overdue' : 'queued';
+
+    await schedule.update({
+      ma_pipe, start_date: actualStart, end_date: actualEnd,
+      delivery_date: deliveryDate, status: schStatus
+    });
+
+    res.json({ msg: `✅ Đã dời đơn ${ma_dh} sang ${ma_pipe} từ ${actualStart}`, ma_dh, ma_pipe, start_date: actualStart, end_date: actualEnd, is_overdue: isOverdue });
+  } catch (e) {
+    console.error('Error moving schedule:', e);
+    res.status(500).json({ msg: 'Lỗi khi dời lịch: ' + e.message });
+  }
+});
+
+// Swap positions of two orders
+app.post('/api/schedule/swap', async (req, res) => {
+  try {
+    const { ma_dh_a, ma_dh_b } = req.body;
+    const { Schedule } = require('./models');
+
+    const scheduleA = await Schedule.findOne({ where: { ma_dh: ma_dh_a } });
+    const scheduleB = await Schedule.findOne({ where: { ma_dh: ma_dh_b } });
+
+    if (!scheduleA || !scheduleB) {
+      return res.status(404).json({ msg: 'Không tìm thấy một trong các lịch trình' });
+    }
+
+    const temp = {
+      ma_pipe: scheduleA.ma_pipe, start_date: scheduleA.start_date,
+      end_date: scheduleA.end_date, delivery_date: scheduleA.delivery_date,
+      status: scheduleA.status, position: scheduleA.position
+    };
+
+    await scheduleA.update({
+      ma_pipe: scheduleB.ma_pipe, start_date: scheduleB.start_date,
+      end_date: scheduleB.end_date, delivery_date: scheduleB.delivery_date,
+      status: scheduleB.status, position: scheduleB.position
+    });
+
+    await scheduleB.update({
+      ma_pipe: temp.ma_pipe, start_date: temp.start_date,
+      end_date: temp.end_date, delivery_date: temp.delivery_date,
+      status: temp.status, position: temp.position
+    });
+
+    res.json({ msg: `✅ Đổi chỗ ${ma_dh_a} và ${ma_dh_b} thành công`, ma_dh_a, ma_dh_b });
+  } catch (e) {
+    console.error('Error swapping schedule:', e);
+    res.status(500).json({ msg: 'Lỗi khi đổi chỗ lịch: ' + e.message });
   }
 });
 
