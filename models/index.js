@@ -27,12 +27,7 @@ Order.hasOne(Schedule, { foreignKey: 'ma_dh', sourceKey: 'ma_dh' });
 Schedule.belongsTo(Order, { foreignKey: 'ma_dh', targetKey: 'ma_dh' });
 
 const syncAll = async () => {
-  try {
-    await sequelize.sync({ alter: true });
-  } catch (e) {
-    console.log('⚠️ Sync warning (non-fatal):', e.message.substring(0, 100));
-    try { await sequelize.sync(); } catch(e2) { console.log('⚠️ Sync fallback failed:', e2.message.substring(0, 100)); }
-  }
+  await sequelize.sync();
 };
 
 module.exports = {

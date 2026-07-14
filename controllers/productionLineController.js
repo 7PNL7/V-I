@@ -1,7 +1,39 @@
 const { ProductionLine, Product, Order, BOM, Material } = require('../models');
+const { sequelize } = require('../config/db');
 
 exports.getAll = async (req, res) => {
-  const lines = await ProductionLine.findAll({ include: Product });
+  const [rows] = await sequelize.query(
+    `SELECT p.*, 
+      pr.ma_sp AS product_ma_sp, pr.ten_sp AS product_ten_sp, 
+      pr.description AS product_description, pr.image AS product_image,
+      pr.price AS product_price, pr.stock AS product_stock
+    FROM pipeline p
+    LEFT JOIN product pr ON p.ma_sp_dang_lam = pr.ma_sp`
+  );
+  const lines = rows.map(row => {
+    const product = row.product_ma_sp ? {
+      ma_sp: row.product_ma_sp,
+      ten_sp: row.product_ten_sp,
+      description: row.product_description,
+      image: row.product_image,
+      price: row.product_price,
+      stock: row.product_stock
+    } : null;
+    return {
+      ma_pipe: row.ma_pipe,
+      ten_pipe: row.ten_pipe,
+      status: row.status,
+      ma_sp_dang_lam: row.ma_sp_dang_lam,
+      ma_dh_dang_lam: row.ma_dh_dang_lam,
+      step_do_status: row.step_do_status,
+      step_may_status: row.step_may_status,
+      step_kiem_thu_status: row.step_kiem_thu_status,
+      startTime: row.startTime,
+      estimatedEndTime: row.estimatedEndTime,
+      daily_capacity: row.daily_capacity,
+      product
+    };
+  });
   res.json(lines);
 };
 
@@ -100,6 +132,27 @@ exports.updateStepStatus = async (req, res) => {
     await ProductionLine.update({ [field]: status }, { where: { ma_pipe: req.params.id } });
     const updated = await ProductionLine.findByPk(req.params.id, { include: Product });
     res.json({ msg: 'Cập nhật khâu thành công', pipeline: updated });
+  } catch (error) {
+    res.status(500).json({ msg: error.message });
+  }
+};
+
+exports.updateCapacity = async (req, res) => {
+  try {
+    const { daily_capacity } = req.body;
+    if (!daily_capacity || daily_capacity < 1 || daily_capacity > 99999) {
+      return res.status(400).json({ msg: 'Công suất phải từ 1 đến 99999 sp/ngày' });
+    }
+    await sequelize.query(
+      'UPDATE pipeline SET daily_capacity = ? WHERE ma_pipe = ?',
+      { replacements: [Number(daily_capacity), req.params.id] }
+    );
+    const [rows] = await sequelize.query(
+      'SELECT * FROM pipeline WHERE ma_pipe = ?',
+      { replacements: [req.params.id] }
+    );
+    const updated = rows[0] || null;
+    res.json({ msg: 'Cập nhật công suất thành công', pipeline: updated });
   } catch (error) {
     res.status(500).json({ msg: error.message });
   }

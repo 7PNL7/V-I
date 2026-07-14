@@ -279,6 +279,13 @@
         <div class="pipe-product">
           <strong>Sản phẩm:</strong> ${prodName} ${prodCode ? '('+prodCode+')' : ''}
         </div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:10px;color:#555;">
+          <strong>⚡ Năng suất:</strong>
+          <input type="number" min="1" max="99999" value="${l.daily_capacity || 500}"
+            onchange="updateCapacity('${l.ma_pipe}', this.value)"
+            style="width:70px;padding:4px 8px;border:1px solid #dde3ed;border-radius:6px;font-size:13px;text-align:center;font-family:inherit;">
+          <span>sp/ngày</span>
+        </div>
         <div class="pipe-actions">
           <a class="btn btn-outline btn-sm" href="/admin/production/${l.ma_pipe}/detail">👁 Xem chi tiết</a>
           ${ l.status === 'IDLE' ? `<button class="btn btn-success btn-sm" onclick="assignToPipe('${l.ma_pipe}')">➕ Gán đơn</button>` : '' }
@@ -524,6 +531,27 @@
   function executeAction() {
     if (pendingAction) pendingAction();
     closeModal();
+  }
+
+  async function updateCapacity(pipeId, value) {
+    const val = parseInt(value);
+    if (val < 1 || val > 99999) {
+      showToast('⚠️ Công suất phải từ 1 đến 99999 sp/ngày', 'error');
+      return loadPipelines();
+    }
+    try {
+      const res = await fetch(`/api/production-lines/${pipeId}/capacity`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ daily_capacity: val })
+      });
+      if (res.ok) {
+        showToast(`✅ Cập nhật năng suất ${pipeId}: ${val} sp/ngày`, 'success');
+      } else {
+        const data = await res.json();
+        showToast('❌ ' + (data.msg || 'Lỗi'), 'error');
+      }
+    } catch (e) { showToast('❌ Lỗi kết nối', 'error'); }
   }
 
   function showToast(msg, type) {
