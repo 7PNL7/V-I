@@ -518,10 +518,10 @@ app.post('/api/schedule/assign', async (req, res) => {
       return res.status(404).json({ msg: 'Không tìm thấy đơn hàng hoặc dây chuyền' });
     }
 
-    // Check if order already scheduled
+    // Check if order already scheduled - if so, remove old schedule
     const existing = await Schedule.findOne({ where: { ma_dh } });
     if (existing) {
-      return res.status(400).json({ msg: 'Đơn hàng đã được xếp lịch trước đó' });
+      await Schedule.destroy({ where: { ma_dh } });
     }
 
     // Calculate production days
