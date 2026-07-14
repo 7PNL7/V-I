@@ -587,6 +587,96 @@ app.post('/api/schedule/assign', async (req, res) => {
   }
 });
 
+app.post('/api/schedule/move', async (req, res) => {
+  try {
+    const { ma_dh, ma_pipe, start_date } = req.body;
+    const { Order, Schedule } = require('./models');
+
+    const toLocalDate = (date) => {
+      if (!date) return null;
+      const d = new Date(date);
+      return d.getFullYear() + '-' + 
+        String(d.getMonth() + 1).padStart(2, '0') + '-' + 
+        String(d.getDate()).padStart(2, '0');
+    };
+
+    const order = await Order.findOne({ where: { ma_dh } });
+    const schedule = await Schedule.findOne({ where: { ma_dh } });
+
+    if (!order || !schedule) {
+      return res.status(404).json({ msg: 'Không tìm thấy đơn hoặc lịch trình' });
+    }
+
+    const prodDays = Math.ceil(order.so_luong / 500) || 1;
+    const actualStart = start_date || schedule.start_date;
+    const endDt = new Date(actualStart + 'T00:00:00');
+    endDt.setDate(endDt.getDate() + prodDays - 1);
+    const actualEnd = toLocalDate(endDt);
+    const deliveryDate = order.ngay_giao ? toLocalDate(order.ngay_giao) : null;
+    const isOverdue = deliveryDate && actualEnd > deliveryDate;
+    const schStatus = isOverdue ? 'overdue' : 'queued';
+
+    await schedule.update({
+      ma_pipe,
+      start_date: actualStart,
+      end_date: actualEnd,
+      delivery_date: deliveryDate,
+      status: schStatus
+    });
+
+    res.json({ msg: `✅ Đã dời đơn ${ma_dh} sang ${ma_pipe} từ ${actualStart}`, ma_dh, ma_pipe, start_date: actualStart, end_date: actualEnd, is_overdue: isOverdue });
+  } catch (e) {
+    console.error('Error moving schedule:', e);
+    res.status(500).json({ msg: 'Lỗi khi dời lịch: ' + e.message });
+  }
+});
+
+app.post('/api/schedule/swap', async (req, res) => {
+  try {
+    const { ma_dh_a, ma_dh_b } = req.body;
+    const { Schedule } = require('./models');
+
+    const scheduleA = await Schedule.findOne({ where: { ma_dh: ma_dh_a } });
+    const scheduleB = await Schedule.findOne({ where: { ma_dh: ma_dh_b } });
+
+    if (!scheduleA || !scheduleB) {
+      return res.status(404).json({ msg: 'Không tìm thấy một trong các lịch trình' });
+    }
+
+    const temp = {
+      ma_pipe: scheduleA.ma_pipe,
+      start_date: scheduleA.start_date,
+      end_date: scheduleA.end_date,
+      delivery_date: scheduleA.delivery_date,
+      status: scheduleA.status,
+      position: scheduleA.position
+    };
+
+    await scheduleA.update({
+      ma_pipe: scheduleB.ma_pipe,
+      start_date: scheduleB.start_date,
+      end_date: scheduleB.end_date,
+      delivery_date: scheduleB.delivery_date,
+      status: scheduleB.status,
+      position: scheduleB.position
+    });
+
+    await scheduleB.update({
+      ma_pipe: temp.ma_pipe,
+      start_date: temp.start_date,
+      end_date: temp.end_date,
+      delivery_date: temp.delivery_date,
+      status: temp.status,
+      position: temp.position
+    });
+
+    res.json({ msg: `✅ Đổi chỗ ${ma_dh_a} và ${ma_dh_b} thành công`, ma_dh_a, ma_dh_b });
+  } catch (e) {
+    console.error('Error swapping schedule:', e);
+    res.status(500).json({ msg: 'Lỗi khi đổi chỗ lịch: ' + e.message });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
