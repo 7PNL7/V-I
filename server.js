@@ -1,18 +1,21 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const { connectDB } = require('./config/db');
+const { connectDB, sequelize } = require('./config/db');
 
 const app = express();
+
+// Helper: get all pipelines with daily_capacity via raw SQL
+async function getLinesWithCapacity() {
+  const [rows] = await sequelize.query('SELECT * FROM pipeline');
+  return rows;
+}
 
 // Middleware
 app.use(express.json());
 app.use(cors());
 app.use(express.static('public'));
 app.set('view engine', 'ejs');
-
-// Kết nối Database MySQL
-connectDB();
 
 // API Routes
 app.use('/api/auth', require('./routes/auth'));
@@ -45,16 +48,17 @@ app.get('/admin/orders', async (req, res) => {
 });
 
 app.get('/admin/production', async (req, res) => {
-  const { ProductionLine, Product } = require('./models');
-  const lines = await ProductionLine.findAll({ include: Product });
+  const { Product } = require('./models');
+  const lines = await getLinesWithCapacity();
   const products = await Product.findAll();
   res.render('production', { lines, products, title: 'Điều phối Dây chuyền Sản xuất' });
 });
 
 app.get('/admin/production/:id/detail', async (req, res) => {
-  const { ProductionLine, Product, Order, BOM, Material } = require('./models');
+  const { Product, Order, BOM, Material } = require('./models');
 
-  const line = await ProductionLine.findByPk(req.params.id, { include: Product });
+  const [lineRows] = await sequelize.query('SELECT p.*, pr.ma_sp AS product_ma_sp, pr.ten_sp AS product_ten_sp FROM pipeline p LEFT JOIN product pr ON p.ma_sp_dang_lam = pr.ma_sp WHERE p.ma_pipe = ?', { replacements: [req.params.id] });
+  const line = lineRows[0];
   let order = null;
   let bom = [];
 
@@ -73,7 +77,7 @@ app.get('/admin/production/:id/detail', async (req, res) => {
     title: `Chi tiết ${req.params.id}`,
     line,
     order,
-    product: line?.product || null,
+    product: line?.product_ma_sp ? { ma_sp: line.product_ma_sp, ten_sp: line.product_ten_sp } : null,
     bom: bom.map(item => ({
       ma_nl: item.ma_nl,
       ten_nl: item.storage?.ten_nl || item.ma_nl,
@@ -86,12 +90,12 @@ app.get('/admin/production/:id/detail', async (req, res) => {
 
 app.get('/admin/schedule-planning', async (req, res) => {
   try {
-    const { Order, Product, ProductionLine } = require('./models');
+    const { Order, Product } = require('./models');
     const orders = await Order.findAll({ 
       include: Product,
       order: [['ngay_nhan', 'DESC']]
     });
-    const lines = await ProductionLine.findAll();
+    const lines = await getLinesWithCapacity();
     res.render('schedule-planning', { 
       title: 'Lập lịch kế hoạch sản xuất',
       orders,
@@ -139,10 +143,7 @@ app.post('/api/schedule/suggest-lines', async (req, res) => {
     const { ma_dh, ma_sp, so_luong, ngay_giao } = req.body;
     const { ProductionLine } = require('./models');
 
-    const lines = await ProductionLine.findAll();
-    
-    // Tính thời gian sản xuất ước tính (500 cái/ngày)
-    const production_days = Math.ceil(so_luong / 500) || 1;
+    const lines = await getLinesWithCapacity();
     
     const giao_date = new Date(ngay_giao);
     const today = new Date();
@@ -151,6 +152,8 @@ app.post('/api/schedule/suggest-lines', async (req, res) => {
     const daysToDelivery = Math.ceil((giao_date - today) / (1000 * 60 * 60 * 24));
 
     const suggestions = lines.map(line => {
+      const capacity = line.daily_capacity || 500;
+      const production_days = Math.ceil(so_luong / capacity) || 1;
       let score = 100;
       let available_from = 'Sẵn sàng';
       let status_text = 'Khả dụng';
@@ -199,6 +202,8 @@ app.post('/api/schedule/suggest-lines', async (req, res) => {
         status_text,
         available_from,
         estimated_end,
+        production_days,
+        daily_capacity: capacity,
         score: Math.round(score),
         days_to_delivery: daysToDelivery
       };
@@ -218,18 +223,20 @@ app.post('/api/schedule/suggest-lines', async (req, res) => {
 app.get('/api/schedule/gantt', async (req, res) => {
   try {
     const { ma_dh, ma_pipe } = req.query;
-    const { ProductionLine, Order } = require('./models');
+    const { Order } = require('./models');
 
     // Get the order and line
     const order = await Order.findOne({ where: { ma_dh } });
-    const line = await ProductionLine.findOne({ where: { ma_pipe } });
+    const [lineRows] = await sequelize.query('SELECT * FROM pipeline WHERE ma_pipe = ?', { replacements: [ma_pipe] });
+    const line = lineRows[0];
 
     if (!order || !line) {
       return res.status(404).json({ msg: 'Không tìm thấy' });
     }
 
     // Calculate production time
-    const production_days = Math.ceil(order.so_luong / 500) || 1;
+    const capacity = line.daily_capacity || 500;
+    const production_days = Math.ceil(order.so_luong / capacity) || 1;
     
     // Calculate dates
     const today = new Date();
@@ -307,7 +314,7 @@ app.get('/api/schedule/gantt', async (req, res) => {
 app.get('/api/schedule/gantt-all', async (req, res) => {
   try {
     const { ProductionLine, Order, Product, Schedule } = require('./models');
-    const lines = await ProductionLine.findAll();
+    const lines = await getLinesWithCapacity();
     const allOrders = await Order.findAll({ include: Product });
     const allSchedules = await Schedule.findAll({ order: [['ma_pipe', 'ASC'], ['position', 'ASC']] });
     
@@ -354,7 +361,7 @@ app.get('/api/schedule/gantt-all', async (req, res) => {
 
         const prodDays = endLocal && startLocal
           ? Math.round((new Date(endLocal + 'T00:00:00') - new Date(startLocal + 'T00:00:00')) / 86400000) + 1
-          : Math.ceil(order.so_luong / 500) || 1;
+          : Math.ceil(order.so_luong / (line.daily_capacity || 500)) || 1;
 
         const actualStart = startLocal || toLocalDate(today);
         const startDt = new Date(actualStart + 'T00:00:00');
@@ -427,14 +434,15 @@ app.post('/api/schedule/suggest-slot', async (req, res) => {
     };
 
     const order = ma_dh ? await Order.findOne({ where: { ma_dh } }) : null;
-    const prodDays = Math.ceil((so_luong || order?.so_luong || 1000) / 500) || 1;
-    const delivery = ngay_giao || (order?.ngay_giao ? toLocalDate(order.ngay_giao) : null);
-    const today = toLocalDate(new Date());
 
-    const lines = await ProductionLine.findAll();
+    const lines = await getLinesWithCapacity();
     const allSchedules = await Schedule.findAll({ order: [['position', 'ASC']] });
 
     const suggestions = lines.map(line => {
+      const capacity = line.daily_capacity || 500;
+      const prodDays = Math.ceil((so_luong || order?.so_luong || 1000) / capacity) || 1;
+      const delivery = ngay_giao || (order?.ngay_giao ? toLocalDate(order.ngay_giao) : null);
+      const today = toLocalDate(new Date());
       const lineSchedules = allSchedules.filter(s => s.ma_pipe === line.ma_pipe);
       
       let slotStart = today;
@@ -469,6 +477,7 @@ app.post('/api/schedule/suggest-slot', async (req, res) => {
         ma_pipe: line.ma_pipe,
         ten_pipe: line.ten_pipe,
         status: line.status,
+        daily_capacity: capacity,
         queue_length: lineSchedules.length,
         slot_start: slotStart,
         slot_end: slotEnd,
@@ -502,7 +511,8 @@ app.post('/api/schedule/assign', async (req, res) => {
     };
 
     const order = await Order.findOne({ where: { ma_dh } });
-    const line = await ProductionLine.findOne({ where: { ma_pipe } });
+    const [lineRows] = await sequelize.query('SELECT * FROM pipeline WHERE ma_pipe = ?', { replacements: [ma_pipe] });
+    const line = lineRows[0];
 
     if (!order || !line) {
       return res.status(404).json({ msg: 'Không tìm thấy đơn hàng hoặc dây chuyền' });
@@ -515,7 +525,8 @@ app.post('/api/schedule/assign', async (req, res) => {
     }
 
     // Calculate production days
-    const prodDays = Math.ceil(order.so_luong / 500) || 1;
+    const capacity = line.daily_capacity || 500;
+    const prodDays = Math.ceil(order.so_luong / capacity) || 1;
 
     // Determine start date: if start_date provided, use it; else queue after last order
     let actualStart = start_date;
@@ -895,6 +906,16 @@ app.post('/api/schedule/swap', async (req, res) => {
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-  console.log(`✅ Server is running on http://localhost:${PORT}`);
+// === Wait for DB connection BEFORE starting server ===
+async function startServer() {
+  await connectDB();
+  
+  app.listen(PORT, () => {
+    console.log(`✅ Server is running on http://localhost:${PORT}`);
+  });
+}
+
+startServer().catch(err => {
+  console.error('❌ Failed to start server:', err.message);
+  process.exit(1);
 });

@@ -215,6 +215,9 @@
         <h3>📋 Đơn hàng chờ</h3>
         <div class="sidebar-body" id="orderList"><div class="empty-state"><h3>Đang tải...</h3></div></div>
       </div>
+      <div class="sidebar-card" id="durationCard" style="display:none;">
+        <div class="sidebar-body" id="durationEstimates"></div>
+      </div>
       <div class="sidebar-card" style="margin-bottom:0;">
         <h3>ℹ️ Hướng dẫn</h3>
         <div class="sidebar-body" style="font-size:12px;color:#666;line-height:1.7;">
@@ -383,7 +386,10 @@
   }
 
   async function showSlotSuggestions() {
-    if (!selectedOrder) return;
+    if (!selectedOrder) {
+      document.getElementById('durationCard').style.display = 'none';
+      return;
+    }
     try {
       const res = await fetch('/api/schedule/suggest-slot', {
         method: 'POST',
@@ -395,15 +401,45 @@
         })
       });
       const suggestions = await res.json();
-      if (!suggestions || suggestions.length === 0) return;
-      let msg = `💡 Đề xuất cho ${selectedOrder.ma_dh}:<br>`;
-      suggestions.slice(0, 3).forEach(s => {
-        const icon = s.is_overdue ? '🔴' : '🟢';
-        const overtime = s.is_overdue ? ' (trễ hạn!)' : '';
-        msg += `${icon} ${s.ten_pipe}: BĐ ${s.slot_start} → KT ${s.slot_end} (${s.production_days} ngày, ${s.queue_length} đơn chờ)${overtime}<br>`;
+      if (!suggestions || suggestions.length === 0) {
+        document.getElementById('durationCard').style.display = 'none';
+        return;
+      }
+      // Render duration panel
+      const container = document.getElementById('durationEstimates');
+      const card = document.getElementById('durationCard');
+      const order = selectedOrder;
+      const so_luong = Number(order.so_luong);
+      const ngay_giao = order.ngay_giao;
+      const today = new Date(); today.setHours(0,0,0,0);
+      const giaoDate = ngay_giao ? new Date(ngay_giao + 'T00:00:00') : null;
+      const daysToDelivery = giaoDate ? Math.ceil((giaoDate - today) / 86400000) : null;
+
+      let html = `<div style="font-size:13px;font-weight:700;color:#1F3864;margin-bottom:6px;">⏱ Phân tích đơn hàng</div>`;
+      html += `<div style="font-size:12px;color:#666;margin-bottom:10px;">${order.ma_dh} · ${order.ten_kh} · ${so_luong.toLocaleString()} cái</div>`;
+
+      suggestions.forEach(s => {
+        const prodDays = s.production_days;
+        const canMeet = daysToDelivery !== null ? prodDays <= daysToDelivery : true;
+        const color = canMeet ? '#28a745' : '#dc3545';
+        const icon = canMeet ? '✅' : '⚠️';
+        const overdueText = s.is_overdue ? ' · <span style="color:#dc3545;font-weight:700;">TRỄ HẠN</span>' : '';
+        html += `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 10px;border:1px solid #e8edf5;border-radius:6px;margin-bottom:4px;font-size:12px;">
+          <div><span style="font-weight:600;color:#1F3864;">${s.ten_pipe}</span><br><span style="font-size:11px;color:#888;">${s.status} · ${s.queue_length} đơn chờ</span></div>
+          <div style="text-align:right;">
+            <span style="color:#555;">${s.daily_capacity} sp/ng → <strong style="color:${color};">${prodDays} ngày</strong> ${icon}</span><br>
+            <span style="font-size:11px;color:#888;">${s.slot_start} → ${s.slot_end}${overdueText}</span>
+          </div>
+        </div>`;
       });
+      container.innerHTML = html;
+      card.style.display = 'block';
       if (ganttData) renderGantt();
-      showToast(msg, 'success');
+      // Also show first 3 in a brief toast
+      const top3 = suggestions.slice(0, 3).map(s =>
+        `${s.ten_pipe}: ${s.slot_start}→${s.slot_end} (${s.production_days} ngày${s.is_overdue ? ' ⛔' : ''})`
+      ).join('<br>');
+      showToast(`💡 Đề xuất cho ${selectedOrder.ma_dh}:<br>${top3}`, 'success');
     } catch(e) { console.error('Suggest error:', e); }
   }
 
